@@ -31,11 +31,15 @@ Each `dayXX-*` folder in this repo represents an incremental content block, with
   - Tools with *human-in-the-loop* (you approve/provide answers for the agent).
 
 - **day03-session/**  
-  Focus on session state and persistence with SQLite:
+  Focus on session state, persistence, and agent memory patterns:
   - **simple_stateful_agent_d03/** – agent with in-memory sessions, showing how context is kept across turns while the process is running.
   - **sqlite_stateful_agent_d03/** – agent using `DatabaseSessionService` (SQLite), persisting events and allowing you to resume sessions after the process ends.
   - **context_compaction_agent_d03/** – similar research agent, but with `EventsCompactionConfig` enabled, demonstrating history compaction (event summarization) to control LLM context size.
   - **session_as_tool_agent_d03/** – example where tools write to and read from `ToolContext.state`, storing user information (name, country, etc.) in the session and showing how the agent can “remember” data between turns.
+   - **ingest_memory_agent_d03/** – demonstrates ingesting session information into `MemoryService` so it can be reused beyond a single conversation.
+   - **reactive_load_memory_agent_d03/** – agent uses the `load_memory` tool to reactively fetch relevant memories from `MemoryService` when answering user questions.
+   - **proactive_load_memory_agent_d03/** – agent uses the `preload_memory` tool to proactively retrieve memories before responding, so answers can incorporate past interactions.
+   - **auto_save_memory_agent_d03/** – shows how to automatically save sessions to `MemoryService` (e.g., via callbacks) and later search those memories across different sessions.
 
 ## 🧠 Key concepts covered
 
