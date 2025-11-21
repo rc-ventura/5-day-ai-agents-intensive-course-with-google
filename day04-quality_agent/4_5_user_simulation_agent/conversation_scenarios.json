@@ -1,0 +1,12 @@
+{
+  "scenarios": [
+    {
+      "starting_prompt": "Hi, I just moved into a smart home. Can you help me configure my lights?",
+      "conversation_plan": "First ask the agent to turn on the floor lamp in the living room. After the agent responds, ask it to turn off the same lamp. Then ask it to turn on the main light in the kitchen."
+    },
+    {
+      "starting_prompt": "Hello, I'm not sure what devices you can control.",
+      "conversation_plan": "Ask the agent what kinds of devices it can control in the house. Then ask it to turn on an invalid device in the garage. Finally, ask it to summarize which actions it actually performed."
+    }
+  ]
+}

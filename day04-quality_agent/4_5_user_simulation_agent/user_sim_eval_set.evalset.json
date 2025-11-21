@@ -1,0 +1,31 @@
+{
+  "eval_set_id": "user_sim_eval_set",
+  "name": "user_sim_eval_set",
+  "eval_cases": [
+    {
+      "eval_id": "7139ea27",
+      "conversation_scenario": {
+        "starting_prompt": "Hi, I just moved into a smart home. Can you help me configure my lights?",
+        "conversation_plan": "First ask the agent to turn on the floor lamp in the living room. After the agent responds, ask it to turn off the same lamp. Then ask it to turn on the main light in the kitchen."
+      },
+      "session_input": {
+        "app_name": "4_5_user_simulation_agent",
+        "user_id": "user"
+      },
+      "creation_timestamp": 1763735670.729313
+    },
+    {
+      "eval_id": "c436600c",
+      "conversation_scenario": {
+        "starting_prompt": "Hello, I'm not sure what devices you can control.",
+        "conversation_plan": "Ask the agent what kinds of devices it can control in the house. Then ask it to turn on an invalid device in the garage. Finally, ask it to summarize which actions it actually performed."
+      },
+      "session_input": {
+        "app_name": "4_5_user_simulation_agent",
+        "user_id": "user"
+      },
+      "creation_timestamp": 1763735670.729587
+    }
+  ],
+  "creation_timestamp": 1763735655.101418
+}

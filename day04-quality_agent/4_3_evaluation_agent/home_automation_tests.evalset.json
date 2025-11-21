@@ -1,0 +1,78 @@
+{
+  "eval_set_id": "home_automation_tests",
+  "name": "home_automation_tests",
+  "eval_cases": [
+    {
+      "eval_id": "basic_device_control",
+      "conversation": [
+        {
+          "invocation_id": "e-99808c2b-660f-44b0-a6e3-8a5671ba65e8",
+          "user_content": {
+            "parts": [
+              {
+                "text": "Turn on the desk lamp in the office"
+              }
+            ],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [
+              {
+                "text": "The desk lamp is off"
+              }
+            ],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "invocation_events": [
+              {
+                "author": "home_automation_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_call": {
+                        "id": "adk-8751cb87-a625-4bc1-99df-0130566b4d06",
+                        "args": {
+                          "location": "office",
+                          "device_id": "desk lamp",
+                          "status": "ON"
+                        },
+                        "name": "set_device_status"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                }
+              },
+              {
+                "author": "home_automation_agent",
+                "content": {
+                  "parts": [
+                    {
+                      "function_response": {
+                        "id": "adk-8751cb87-a625-4bc1-99df-0130566b4d06",
+                        "name": "set_device_status",
+                        "response": {
+                          "success": true,
+                          "message": "Successfully set the desk lamp in office to on."
+                        }
+                      }
+                    }
+                  ],
+                  "role": "user"
+                }
+              }
+            ]
+          },
+          "creation_timestamp": 1763730788.294643
+        }
+      ],
+      "session_input": {
+        "app_name": "4_3_evaluation_agent",
+        "user_id": "user"
+      },
+      "creation_timestamp": 1763730854.0162659
+    }
+  ],
+  "creation_timestamp": 1763730827.1791942
+}

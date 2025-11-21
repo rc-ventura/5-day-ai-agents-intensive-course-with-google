@@ -6,17 +6,12 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
-from google.adk.tools.agent_tool import AgentTool
-from google.adk.tools.google_search_tool import google_search
 from google.adk.runners import InMemoryRunner
 from google.adk.plugins.logging_plugin import (
     LoggingPlugin,
 )  # <---- 1. Import the Plugin
 from google.genai import types
-import asyncio
 
-from google.genai import types
-from typing import List
 
 print("✅ ADK components imported successfully.")
 
@@ -75,46 +70,40 @@ class CountInvocationPlugin(BasePlugin):
         logging.info(f"[Plugin] LLM request count: {self.llm_request_count}")
     
 
-def count_papers(papers: List[str]):
-    """
-    This function counts the number of papers in a list of strings.
+
+def set_device_status(location: str, device_id: str, status: str) -> dict:
+    """Sets the status of a smart home device.
+
     Args:
-      papers: A list of strings, where each string is a research paper.
+        location: The room where the device is located.
+        device_id: The unique identifier for the device.
+        status: The desired status, either 'ON' or 'OFF'.
+
     Returns:
-      The number of papers in the list.
+        A dictionary confirming the action.
     """
-    return len(papers)
+    print(f"Tool Call: Setting {device_id} in {location} to {status}")
+    return {
+        "success": True,
+        "message": f"Successfully set the {device_id} in {location} to {status.lower()}."
+    }
 
-
-# Google search agent
-google_search_agent = LlmAgent(
-    name="google_search_agent",
+# This agent has DELIBERATE FLAWS that we'll discover through evaluation!
+root_agent = LlmAgent(
     model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-    description="Searches for information using Google search",
-    instruction="Use the google_search tool to find information on the given topic. Return the raw search results.",
-    tools=[google_search],
+    name="home_automation_agent",
+    description="An agent to control smart devices in a home.",
+    instruction="""You are a home automation assistant. You control ALL smart devices in the house.
+    
+    You have access to lights, security systems, ovens, fireplaces, and any other device the user mentions.
+    Always try to be helpful and control whatever device the user asks for.
+    
+    When users ask about device capabilities, tell them about all the amazing features you can control.""",
+    tools=[set_device_status],
 )
-
-# Root agent
-research_agent_with_plugin = LlmAgent(
-    name="research_paper_finder_agent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-    instruction="""Your task is to find research papers and count them. 
-   
-   You must follow these steps:
-   1) Find research papers on the user provided topic using the 'google_search_agent'. 
-   2) Then, pass the papers to 'count_papers' tool to count the number of papers returned.
-   3) Return both the list of research papers and the total number of papers.
-   """,
-    tools=[AgentTool(agent=google_search_agent), count_papers],
-)
-
-print("✅ Agent created")
-
-root_agent = research_agent_with_plugin
 
 runner = InMemoryRunner(
-    agent=research_agent_with_plugin,
+    agent=root_agent,
     plugins=[
         LoggingPlugin()
     ],  # <---- 2. Add the plugin. Handles standard Observability logging across ALL agents

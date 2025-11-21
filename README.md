@@ -25,21 +25,28 @@ Each `dayXX-*` folder in this repo represents an incremental content block, with
 - **day01-agentic/**  
   Basic agent concepts and event flow with ADK.
 
-- **day02-tools/**  
+- **day02-tools_agent/**  
   Introduction to tools invoked by the agent, including examples of:
   - Simple tools (e.g., utility calls);  
   - Tools with *human-in-the-loop* (you approve/provide answers for the agent).
 
-- **day03-session/**  
+- **day03-memory_agent/**  
   Focus on session state, persistence, and agent memory patterns:
-  - **simple_stateful_agent_d03/** – agent with in-memory sessions, showing how context is kept across turns while the process is running.
-  - **sqlite_stateful_agent_d03/** – agent using `DatabaseSessionService` (SQLite), persisting events and allowing you to resume sessions after the process ends.
-  - **context_compaction_agent_d03/** – similar research agent, but with `EventsCompactionConfig` enabled, demonstrating history compaction (event summarization) to control LLM context size.
-  - **session_as_tool_agent_d03/** – example where tools write to and read from `ToolContext.state`, storing user information (name, country, etc.) in the session and showing how the agent can “remember” data between turns.
-   - **ingest_memory_agent_d03/** – demonstrates ingesting session information into `MemoryService` so it can be reused beyond a single conversation.
-   - **reactive_load_memory_agent_d03/** – agent uses the `load_memory` tool to reactively fetch relevant memories from `MemoryService` when answering user questions.
-   - **proactive_load_memory_agent_d03/** – agent uses the `preload_memory` tool to proactively retrieve memories before responding, so answers can incorporate past interactions.
-   - **auto_save_memory_agent_d03/** – shows how to automatically save sessions to `MemoryService` (e.g., via callbacks) and later search those memories across different sessions.
+  - **3_1_simple_stateful_agent/** – agent with in-memory sessions, showing how context is kept across turns while the process is running.
+  - **3_2_session_as_tool_agent/** – tools that read/write `ToolContext.state`, storing user/session data.
+  - **3_3_sqlite_stateful_agent/** – agent using `DatabaseSessionService` (SQLite) to persist events and resume sessions.
+  - **3_4_ingest_memory_agent/** – demonstrates ingesting session information into `MemoryService` so it can be reused beyond a single conversation.
+  - **3_5_proactive_load_memory_agent/** – uses `preload_memory` to proactively retrieve memories before responding.
+  - **3_6_reactive_load_memory_agent/** – uses `load_memory` to reactively fetch relevant memories when needed.
+  - **3_8_auto_save_memory_agent/** – shows how to automatically save sessions to `MemoryService` and later search those memories.
+
+- **day04-quality_agent/**  
+  Agent quality, observability, and evaluation:
+  - **4_1_basic_log_agent/** – agent with basic logging and a research-paper search flow, used to demonstrate type errors and debugging via logs.
+  - **4_2_plugins_hook_agent/** – adds plugins (callbacks) to count invocations and record events for observability.
+  - **4_3_evaluation_agent/** – interactive evaluation examples in the ADK Web UI, with `*.evalset.json` generated from real sessions.
+  - **4_4_system_evaluation_agent/** – systematic evaluation via CLI using `adk eval`, with `test_config.json` and `integration.evalset.json`.
+  - **4_5_user_simulation_agent/** – home-automation agent used to demonstrate *User Simulation* with `conversation_scenarios.json`, `session_input.json`, and metric configuration in `eval_config_user_sim.json`.
 
 ## 🧠 Key concepts covered
 
@@ -93,3 +100,54 @@ python agent.py
 ```
 
 Each subfolder contains an `agent.py` with a specific flow, commented step by step.
+
+### Day 4 – Evaluation (CLI)
+
+In addition to running `python agent.py`, Day 4 also includes evaluation flows
+using the `adk eval` CLI.
+
+From the repository root:
+
+```bash
+cd day04-quality_agent
+```
+
+- **System evaluation (4_4_system_evaluation_agent)**
+
+  ```bash
+  adk eval \
+    4_4_system_evaluation_agent \
+    4_4_system_evaluation_agent/integration.evalset.json \
+    --config_file_path=4_4_system_evaluation_agent/test_config.json \
+    --print_detailed_results
+  ```
+
+- **User Simulation evaluation (4_5_user_simulation_agent)**
+
+  1. Create the EvalSet (once):
+
+     ```bash
+     adk eval_set create \
+       4_5_user_simulation_agent \
+       user_sim_eval_set
+     ```
+
+  2. Add conversation scenarios as eval cases:
+
+     ```bash
+     adk eval_set add_eval_case \
+       4_5_user_simulation_agent \
+       user_sim_eval_set \
+       --scenarios_file 4_5_user_simulation_agent/conversation_scenarios.json \
+       --session_input_file 4_5_user_simulation_agent/session_input.json
+     ```
+
+  3. Run the evaluation with user simulation:
+
+     ```bash
+     adk eval \
+       4_5_user_simulation_agent \
+       --config_file_path 4_5_user_simulation_agent/eval_config_user_sim.json \
+       user_sim_eval_set \
+       --print_detailed_results
+     ```
