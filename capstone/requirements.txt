@@ -1,0 +1,15 @@
+# Smart Grading Assistant - Dependencies
+# Google ADK Course Capstone Project
+
+# Google ADK and Gemini
+google-adk>=0.1.0
+google-genai>=0.1.0
+
+# Environment and utilities
+python-dotenv>=1.0.0
+
+# Database (for persistent sessions)
+sqlalchemy>=2.0.0
+
+# Optional: Streamlit frontend
+streamlit>=1.28.0
