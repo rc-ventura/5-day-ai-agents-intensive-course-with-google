@@ -107,6 +107,9 @@ def validate_rubric(rubric_json: str, tool_context: ToolContext) -> dict:
             "errors": errors
         })
     
+    # Persist the parsed rubric so downstream agents can inspect the criteria
+    tool_context.state["rubric"] = rubric
+    
     return _save_and_return({
         "status": "valid",
         "criteria_count": len(rubric["criteria"]),

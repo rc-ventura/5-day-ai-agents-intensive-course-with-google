@@ -51,8 +51,15 @@ except ImportError:  # When running `python agent.py` directly inside capstone/
 # Load environment variables
 load_dotenv()
 
-LOG_PATH = os.path.join(os.path.dirname(__file__), "grading_agent.log")
+BASE_DIR = os.path.dirname(__file__)
+LOG_PATH = os.path.join(BASE_DIR, "logs", "grading_agent.log")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
+os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+MODEL_LITE = os.getenv("MODEL_LITE", "gemini-2.5-flash-lite")
+MODEL = os.getenv("MODEL", "gemini-2.5-flash")
 
 # Configure logging for observability
 logging.basicConfig(
@@ -317,7 +324,7 @@ print("✅ Human-in-the-Loop tool defined")
 
 rubric_validator_agent = LlmAgent(
     name="RubricValidatorAgent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
     description="Validates the structure and completeness of grading rubrics",
     instruction="""You are a rubric validation specialist. Your job is to validate 
     grading rubrics before they are used for evaluation.
@@ -344,14 +351,26 @@ print("✅ RubricValidatorAgent created")
 # Concept: Day 1 - Parallel Agents
 # =============================================================================
 
+def _slugify(text: str) -> str:
+    """Normalize text to safe identifier (lowercase, ascii, underscores)."""
+    if not text:
+        return "criterion"
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_text)
+    slug = slug.strip("_").lower()
+    return slug or "criterion"
+
+
 def create_criterion_grader(criterion_name: str, criterion_description: str, max_score: int) -> LlmAgent:
     """Factory function to create a grader agent for a specific criterion.
     
     This allows us to create parallel graders dynamically based on the rubric.
     """
+    criterion_slug = _slugify(criterion_name)
     return LlmAgent(
-        name=f"Grader_{criterion_name.replace(' ', '_')}",
-        model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
+        name=f"Grader_{criterion_slug}",
+        model=Gemini(model=MODEL, retry_options=retry_config),
         description=f"Evaluates submissions for: {criterion_name}",
         instruction=f"""You are an expert evaluator for the criterion: "{criterion_name}"
         
@@ -368,11 +387,11 @@ def create_criterion_grader(criterion_name: str, criterion_description: str, max
         Be fair, consistent, and constructive in your feedback.
         Focus ONLY on this criterion - other aspects will be evaluated by other agents.""",
         tools=[grade_criterion],
-        output_key=f"grade_{criterion_name.replace(' ', '_').lower()}",
+        output_key=f"grade_{criterion_slug}",
     )
 
 
-# Default graders for Python code rubric (will be replaced dynamically)
+# Default graders for Python code rubric (dynamic pipeline will replace when rubric provided)
 code_quality_grader = create_criterion_grader(
     "Code Quality", 
     "Evaluate code readability, naming conventions, and PEP 8 adherence",
@@ -399,6 +418,21 @@ parallel_graders = ParallelAgent(
 
 print("✅ ParallelGraders created (3 criterion graders)")
 
+
+def build_graders_from_rubric(rubric: dict) -> List[LlmAgent]:
+    """Build ParallelGraders sub-agents directly from rubric criteria."""
+    graders: List[LlmAgent] = []
+    criteria = rubric.get("criteria") or []
+    for criterion in criteria:
+        name = criterion.get("name") or "Unnamed Criterion"
+        desc = criterion.get("description") or "No description provided"
+        max_score = criterion.get("max_score") or 0
+        try:
+            graders.append(create_criterion_grader(name, desc, max_score))
+        except Exception as exc:
+            logging.warning("Failed to create grader for criterion '%s': %s", name, exc)
+    return graders
+
 # =============================================================================
 # AGENT 3: SCORE AGGREGATOR
 # Concept: Day 1 - Sequential Agent coordination
@@ -406,7 +440,7 @@ print("✅ ParallelGraders created (3 criterion graders)")
 
 aggregator_agent = LlmAgent(
     name="AggregatorAgent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
     description="Aggregates individual criterion grades into a final score",
     instruction="""You are a grade aggregator. Your job is to:
     
@@ -438,7 +472,7 @@ print("✅ AggregatorAgent created")
 
 approval_agent = LlmAgent(
     name="ApprovalAgent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
     description="Handles human approval for edge case grades",
     instruction="""You are the approval coordinator. Your job is to:
     
@@ -465,7 +499,7 @@ print("✅ ApprovalAgent created")
 
 feedback_agent = LlmAgent(
     name="FeedbackGeneratorAgent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
     description="Generates comprehensive feedback for the student",
     instruction="""You are a feedback specialist. Your job is to create 
     constructive, encouraging feedback for the student.
@@ -510,7 +544,7 @@ print("✅ GradingPipeline created (without validator)")
 # Architecture: Root -> (1) Validate Rubric -> (2) If valid, run GradingPipeline
 root_agent = LlmAgent(
     name="SmartGradingAssistant",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
     description="Main coordinator for the Smart Grading Assistant",
     instruction="""You are the Smart Grading Assistant, an AI-powered system 
     for evaluating academic submissions.
@@ -560,8 +594,9 @@ print("✅ Resumable App configured")
 # Concept: Day 3 - DatabaseSessionService for persistence
 # =============================================================================
 
-# Use SQLite for persistent sessions
-db_url = "sqlite:///grading_sessions.db"
+# Use SQLite for persistent sessions (stored under capstone/data)
+db_path = os.path.join(DATA_DIR, "grading_sessions.db")
+db_url = f"sqlite:///{db_path}"
 session_service = DatabaseSessionService(db_url=db_url)
 
 # Create runner with DatabaseSessionService (plugins attached to App)
@@ -571,7 +606,7 @@ runner = Runner(
 )
 
 print("✅ Runner created with DatabaseSessionService")
-print(f"   Database: grading_sessions.db")
+print(f"   Database: {db_path}")
 
 # =============================================================================
 # HELPER FUNCTIONS

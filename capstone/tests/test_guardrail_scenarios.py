@@ -132,6 +132,8 @@ def test_validate_rubric_valid():
     assert ctx.state["rubric_validation"]["status"] == "valid"
     assert result["criteria_count"] == 3
     assert result["total_points"] == 100
+    assert "rubric" in ctx.state._data, "Rubric should be persisted in state"
+    assert ctx.state["rubric"]["criteria"][0]["name"] == "Code Quality"
     
     print("   ✅ PASS: Valid rubric correctly validated")
     return True
