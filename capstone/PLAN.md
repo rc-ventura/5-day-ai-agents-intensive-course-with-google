@@ -75,7 +75,8 @@ A multi-agent AI system that:
 | 4 | **Human-in-the-Loop** | Approval for edge cases (score < 5 or > 9) | ✓ |
 | 5 | **Sessions & Memory** | Remember past evaluations for consistency | ✓ |
 | 6 | **Observability** | LoggingPlugin for audit trail | ✓ |
-| 7 | **Gemini** | Main model (bonus points) | +5 |
+| 7 | **Plugins & Guardrails** | RubricGuardrailPlugin (before_agent_callback) enforcing rubric validation before grading | ✓ |
+| 8 | **Gemini** | Main model (bonus points) | +5 |
 
 ## 📅 4-Day Implementation Plan
 
@@ -101,6 +102,7 @@ A multi-agent AI system that:
 
 ### Day 4: Polish + Documentation
 - [ ] Add Observability (LoggingPlugin)
+- [ ] Add Rubric Guardrail (RubricGuardrailPlugin) to block grading when rubric is not valid
 - [ ] Create comprehensive README.md
 - [ ] Add example rubrics and submissions
 - [ ] Create Streamlit frontend (optional)

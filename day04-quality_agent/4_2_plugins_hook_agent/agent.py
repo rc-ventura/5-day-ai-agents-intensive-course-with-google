@@ -116,7 +116,8 @@ root_agent = research_agent_with_plugin
 runner = InMemoryRunner(
     agent=research_agent_with_plugin,
     plugins=[
-        LoggingPlugin()
+        LoggingPlugin(),
+        CountInvocationPlugin()
     ],  # <---- 2. Add the plugin. Handles standard Observability logging across ALL agents
 )
 

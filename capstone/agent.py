@@ -23,6 +23,7 @@ import uuid
 
 from dotenv import load_dotenv
 from google.genai import types
+import os
 
 from google.adk.agents import Agent, LlmAgent, SequentialAgent, ParallelAgent
 from google.adk.apps.app import App, ResumabilityConfig
@@ -32,6 +33,11 @@ from google.adk.sessions import DatabaseSessionService
 from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 from google.adk.plugins.logging_plugin import LoggingPlugin
+from google.adk.plugins.base_plugin import BasePlugin
+from google.adk.agents.base_agent import BaseAgent
+from google.adk.agents.callback_context import CallbackContext
+from google.adk.models.llm_request import LlmRequest
+from typing import Any, Optional
 
 try:
     from .tools.validate_rubric import validate_rubric
@@ -45,9 +51,12 @@ except ImportError:  # When running `python agent.py` directly inside capstone/
 # Load environment variables
 load_dotenv()
 
+LOG_PATH = os.path.join(os.path.dirname(__file__), "grading_agent.log")
+
+
 # Configure logging for observability
 logging.basicConfig(
-    filename="grading_agent.log",
+    filename=LOG_PATH,
     level=logging.DEBUG,
     format="%(asctime)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s",
 )
@@ -74,6 +83,158 @@ FAILING_THRESHOLD = 50  # Below this requires approval
 EXCEPTIONAL_THRESHOLD = 90  # Above this requires approval
 
 print("✅ Configuration loaded")
+
+# =============================================================================
+# RUBRIC GUARDRAIL PLUGIN
+# Blocks grading agents if rubric has not been validated successfully.
+# =============================================================================
+
+
+class RubricGuardrailPlugin(BasePlugin):
+    """Guardrail to ensure rubric is valid before running grading agents.
+
+    This plugin runs before each agent. For agents that depend on a validated
+    rubric, it checks the session state for a `validation_result` with status == "valid".
+    
+    Pattern: Uses before_agent_callback to return types.Content which skips
+    the agent's execution gracefully without crashing the app.
+    
+    """
+
+    def __init__(self) -> None:
+        super().__init__(name="rubric_guardrail")
+        self._blocked_agents: set = set()  # Track which agents were blocked
+
+    def _normalize_validation_payload(self, payload: Any) -> Optional[dict]:
+        """Normalize different payload formats into a dict or None."""
+        if isinstance(payload, dict):
+            return payload
+        if isinstance(payload, str):
+            # Try to parse as JSON first
+            try:
+                parsed = json.loads(payload)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+            text = payload.lower()
+            if any(keyword in text for keyword in ["invalid", "error", "missing", "failed"]):
+                return {
+                    "status": "invalid",
+                    "errors": [
+                        "Rubric validation failed - see validator response"
+                    ],
+                }
+            if "valid" in text and "invalid" not in text:
+                return {"status": "valid"}
+        return None
+
+    def _get_validation_result(self, callback_context: CallbackContext) -> Optional[dict]:
+        """Extract rubric validation status from session state.
+        
+        Primary source: state["rubric_validation"] (set by validate_rubric tool)
+        Fallback: state["validation_result"] (LLM output text) parsed heuristically.
+        """
+        state_sources = []
+
+        try:
+            state_sources.append(callback_context.state.to_dict())
+        except Exception:
+            pass
+
+        inv_ctx = getattr(callback_context, "_invocation_context", None)
+        if inv_ctx:
+            session_state = getattr(inv_ctx, "session_state", {}) or {}
+            state_sources.append(session_state)
+
+        for source in state_sources:
+            if not source:
+                continue
+            for key in ("rubric_validation", "validation_result"):
+                if key in source:
+                    normalized = self._normalize_validation_payload(source.get(key))
+                    if normalized:
+                        return normalized
+
+        return None
+
+    def _is_rubric_valid(self, callback_context: CallbackContext) -> bool:
+        """Check if rubric has been validated successfully."""
+        validation_result = self._get_validation_result(callback_context)
+        if validation_result is None:
+            return False
+        return validation_result.get("status") == "valid"
+
+    def _build_block_message(self, agent_name: str, callback_context: CallbackContext) -> str:
+        """Build a user-friendly blocking message."""
+        validation_result = self._get_validation_result(callback_context)
+        errors = []
+        if validation_result:
+            errors = validation_result.get("errors", [])
+        
+        error_details = "\n".join(f"  - {e}" for e in errors) if errors else "  - Rubric was not validated"
+        
+        return f"""
+🚫 **GRADING BLOCKED BY GUARDRAIL**
+
+Agent '{agent_name}' cannot proceed because the rubric validation failed.
+
+**Validation Errors:**
+{error_details}
+
+**What to do:**
+1. Review the rubric structure
+2. Ensure all required fields are present (name, criteria with name/max_score/description)
+3. Submit a corrected rubric
+
+No grading was performed. The pipeline has been safely stopped.
+"""
+
+    async def before_agent_callback(
+        self, *, agent: BaseAgent, callback_context: CallbackContext
+    ) -> Optional[types.Content]:
+        """Block grading agents when rubric is not valid.
+        
+        Returns types.Content to skip the agent's execution gracefully.
+        Returns None to allow normal execution.
+        """
+        # Define which agents require a valid rubric
+        protected_agents = {
+            "ParallelGraders",
+            "AggregatorAgent",
+            "ApprovalAgent",
+            "FeedbackGeneratorAgent",
+            # Also protect individual graders
+            "Grader_Code_Quality",
+            "Grader_Functionality",
+            "Grader_Documentation",
+        }
+
+        if agent.name not in protected_agents:
+            return None  # Allow agent to proceed
+
+        # Read validation result once for logging / debugging
+        validation_result = self._get_validation_result(callback_context)
+        print(f"[RubricGuardrail] before_agent_callback - agent={agent.name}, validation_result={validation_result}")
+
+        # If rubric is valid, allow the agent to proceed
+        if validation_result and validation_result.get("status") == "valid":
+            print(f"[RubricGuardrail] ALLOW agent '{agent.name}' (rubric valid)")
+            return None
+
+        # Block the agent by returning Content
+        self._blocked_agents.add(agent.name)
+        logging.warning(
+            "[RubricGuardrail] BLOCKED agent '%s' - rubric not valid.",
+            agent.name,
+        )
+        print(f"[RubricGuardrail] BLOCK agent '{agent.name}' (rubric invalid or missing)")
+
+        # Return Content to skip the agent (ADK pattern)
+        return types.Content(
+            role="model",
+            parts=[types.Part(text=self._build_block_message(agent.name, callback_context))],
+        )
 
 # =============================================================================
 # HUMAN-IN-THE-LOOP TOOL
@@ -156,16 +317,21 @@ print("✅ Human-in-the-Loop tool defined")
 
 rubric_validator_agent = LlmAgent(
     name="RubricValidatorAgent",
-    model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     description="Validates the structure and completeness of grading rubrics",
     instruction="""You are a rubric validation specialist. Your job is to validate 
     grading rubrics before they are used for evaluation.
-    
+
     When you receive a rubric:
-    1. Use the validate_rubric tool to check its structure
-    2. If valid, confirm the rubric is ready and list the criteria
-    3. If invalid, explain what needs to be fixed
-    
+    1. Use the validate_rubric tool to check its structure.
+    2. If valid, clearly confirm that the rubric is ready and list the criteria in a friendly way.
+    3. If invalid, provide user-friendly error handling:
+       - Start with a short, clear message that the rubric is not ready for grading.
+       - List the specific problems in a structured way (bulleted list or numbered list).
+       - For each problem, explain exactly what the teacher needs to change in the rubric.
+       - End by saying explicitly that grading will NOT proceed until the rubric is fixed and validated again.
+
+    Your tone should be professional, clear, and encouraging. Assume the user is a teacher who may not be technical.
     Always be precise and helpful in your feedback.""",
     tools=[validate_rubric],
     output_key="validation_result",
@@ -240,7 +406,7 @@ print("✅ ParallelGraders created (3 criterion graders)")
 
 aggregator_agent = LlmAgent(
     name="AggregatorAgent",
-    model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     description="Aggregates individual criterion grades into a final score",
     instruction="""You are a grade aggregator. Your job is to:
     
@@ -272,7 +438,7 @@ print("✅ AggregatorAgent created")
 
 approval_agent = LlmAgent(
     name="ApprovalAgent",
-    model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     description="Handles human approval for edge case grades",
     instruction="""You are the approval coordinator. Your job is to:
     
@@ -299,7 +465,7 @@ print("✅ ApprovalAgent created")
 
 feedback_agent = LlmAgent(
     name="FeedbackGeneratorAgent",
-    model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     description="Generates comprehensive feedback for the student",
     instruction="""You are a feedback specialist. Your job is to create 
     constructive, encouraging feedback for the student.
@@ -327,11 +493,10 @@ print("✅ FeedbackGeneratorAgent created")
 # Concept: Day 1 - Sequential Agent combining all steps
 # =============================================================================
 
-# The main grading pipeline
 grading_pipeline = SequentialAgent(
     name="GradingPipeline",
+    description="Executes the grading workflow: parallel grading -> aggregation -> approval -> feedback",
     sub_agents=[
-        rubric_validator_agent,
         parallel_graders,
         aggregator_agent,
         approval_agent,
@@ -339,31 +504,39 @@ grading_pipeline = SequentialAgent(
     ],
 )
 
+print("✅ GradingPipeline created (without validator)")
+
 # Root agent that coordinates the entire process
+# Architecture: Root -> (1) Validate Rubric -> (2) If valid, run GradingPipeline
 root_agent = LlmAgent(
     name="SmartGradingAssistant",
-    model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     description="Main coordinator for the Smart Grading Assistant",
     instruction="""You are the Smart Grading Assistant, an AI-powered system 
     for evaluating academic submissions.
     
-    When a user provides a submission and rubric:
-    1. Acknowledge the submission
-    2. Delegate to the GradingPipeline for evaluation
-    3. Present the final results clearly
+    **IMPORTANT WORKFLOW:**
+    When a user provides a submission and rubric, you MUST follow this exact order:
     
-    Be professional, helpful, and thorough in your responses.
+    1. FIRST: Use the RubricValidatorAgent to validate the rubric structure
+    2. CHECK the validation result:
+       - If the rubric is VALID (status="valid"): proceed to step 3
+       - If the rubric is INVALID: STOP HERE. Explain the errors to the user and ask them to fix the rubric. DO NOT proceed to grading.
+    3. ONLY IF VALID: Delegate to the GradingPipeline for evaluation
+    4. Present the final results clearly
     
-    If the user asks about the grading process, explain:
-    - Rubric validation
-    - Parallel criterion evaluation
-    - Score aggregation
-    - Human approval for edge cases
-    - Constructive feedback generation""",
-    sub_agents=[grading_pipeline],
+    **GUARDRAIL:** Never call GradingPipeline if the rubric validation failed.
+    This is a strict gate - invalid rubrics must be fixed before grading can proceed.
+    
+    If the user insists on grading with an invalid rubric, politely explain that
+    the system requires a valid rubric to ensure fair and accurate evaluation.
+    
+    Be professional, helpful, and thorough in your responses.""",
+    sub_agents=[rubric_validator_agent, grading_pipeline],
 )
 
 print("✅ Root Agent (SmartGradingAssistant) created")
+print("   Architecture: Root -> Validate -> (if valid) -> GradingPipeline")
 
 # =============================================================================
 # APP CONFIGURATION
@@ -374,6 +547,10 @@ grading_app = App(
     name=APP_NAME,
     root_agent=root_agent,
     resumability_config=ResumabilityConfig(is_resumable=True),
+    plugins=[
+        LoggingPlugin(),          # Observability: logs for all agents/tools/LLM calls
+        RubricGuardrailPlugin(),  # Guardrail: backup safety - blocks if rubric not validated
+    ],
 )
 
 print("✅ Resumable App configured")
@@ -387,7 +564,7 @@ print("✅ Resumable App configured")
 db_url = "sqlite:///grading_sessions.db"
 session_service = DatabaseSessionService(db_url=db_url)
 
-# Create runner with observability plugin
+# Create runner with DatabaseSessionService (plugins attached to App)
 runner = Runner(
     app=grading_app,
     session_service=session_service,
