@@ -44,10 +44,12 @@ try:
     from .tools.validate_rubric import validate_rubric
     from .tools.grade_criterion import grade_criterion
     from .tools.calculate_score import calculate_final_score
+    from .tools.build_grades_payload import build_grades_payload
 except ImportError:  # When running `python agent.py` directly inside capstone/
     from tools.validate_rubric import validate_rubric
     from tools.grade_criterion import grade_criterion
     from tools.calculate_score import calculate_final_score
+    from tools.build_grades_payload import build_grades_payload
 
 # Load environment variables
 load_dotenv()
@@ -490,26 +492,18 @@ aggregator_agent = LlmAgent(
     - If `grader_output_keys` is missing, fall back to the default keys: {", ".join(DEFAULT_GRADE_OUTPUT_KEYS)}.
     
     Workflow:
-    1. Determine which grade keys to use (dynamic list from `grader_output_keys`, or the fallback defaults).
-    2. For each grade key, read the corresponding entry from session state. Each grade contains the criterion metadata and evaluation notes from the grader. Extract the numeric score you need for aggregation and confirm the `max_score` using the rubric data.
-    3. Build a JSON object in the format required by calculate_final_score:
-       {{
-         "grades": [
-           {{
-             "criterion": "<criterion name>",
-             "score": <numeric score between 0 and max_score>,
-             "max_score": <max_score from rubric>,
-             "justification": "Short summary of the grader's notes"
-           }}
-         ]
-       }}
-    4. Call calculate_final_score with the JSON string.
-    5. After calculating, report:
+    1. First, call the build_grades_payload tool. It will read `grader_output_keys`,
+       the rubric, and each grade_<slug> entry from session state, and return a
+       JSON string in the `grades_json` field that is already in the format
+       required by calculate_final_score.
+    2. Then, call calculate_final_score using the `grades_json` value returned
+       by build_grades_payload.
+    3. After calculating, report:
        - Final score, percentage, and letter grade
        - Whether human approval is required (and why)
        - Summary of strengths and areas for improvement, referencing the individual grades.
     """,
-    tools=[calculate_final_score],
+    tools=[build_grades_payload, calculate_final_score],
     output_key="aggregation_result",
 )
 
@@ -736,12 +730,14 @@ async def demo():
     print("🎓 SMART GRADING ASSISTANT - DEMO")
     print("=" * 60)
     
-    # Load sample rubric
-    with open("examples/rubrics/python_code_rubric.json", "r") as f:
+    # Load sample rubric from capstone/examples
+    rubric_path = os.path.join(BASE_DIR, "examples", "rubrics", "python_code_rubric.json")
+    with open(rubric_path, "r") as f:
         rubric = json.load(f)
     
-    # Load sample submission
-    with open("examples/submissions/sample_code.py", "r") as f:
+    # Load sample submission from capstone/examples
+    submission_path = os.path.join(BASE_DIR, "examples", "submissions", "sample_code.py")
+    with open(submission_path, "r") as f:
         submission = f.read()
     
     print(f"\n📋 Rubric: {rubric['name']}")

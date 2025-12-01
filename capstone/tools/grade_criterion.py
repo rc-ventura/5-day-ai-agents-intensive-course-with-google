@@ -14,6 +14,7 @@ def grade_criterion(
     criterion_name: str,
     criterion_description: str,
     max_score: int,
+    score: float,
     submission_content: str,
     evaluation_notes: str
 ) -> dict:
@@ -40,8 +41,9 @@ def grade_criterion(
             "message": "Criterion 'Code Quality' has been evaluated"
         }
     
-    Note: The actual score is determined by the agent based on the evaluation.
-          This tool records the evaluation metadata for the aggregator.
+    Note: The actual score is determined by the agent based on the evaluation
+          and passed as the `score` argument. This tool validates and records
+          the evaluation metadata for the aggregator.
     """
     
     # Validate inputs
@@ -56,6 +58,21 @@ def grade_criterion(
             "status": "error", 
             "error_message": "Max score must be positive"
         }
+    
+    # Validate numeric score
+    try:
+        numeric_score = float(score)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "error_message": "Score must be a number"
+        }
+
+    # Clamp score to valid range [0, max_score]
+    if numeric_score < 0:
+        numeric_score = 0
+    if numeric_score > max_score:
+        numeric_score = max_score
     
     if not submission_content or not submission_content.strip():
         return {
@@ -75,6 +92,7 @@ def grade_criterion(
         "criterion": criterion_name,
         "criterion_description": criterion_description,
         "max_score": max_score,
+        "score": numeric_score,
         "evaluation_notes": evaluation_notes,
         "submission_preview": submission_content[:200] + "..." if len(submission_content) > 200 else submission_content,
         "message": f"Criterion '{criterion_name}' (max {max_score} pts) has been evaluated"
