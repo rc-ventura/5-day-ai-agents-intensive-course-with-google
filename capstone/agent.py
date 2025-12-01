@@ -23,7 +23,6 @@ import uuid
 
 from dotenv import load_dotenv
 from google.genai import types
-import os
 
 from google.adk.agents import Agent, LlmAgent, SequentialAgent, ParallelAgent
 from google.adk.apps.app import App, ResumabilityConfig
@@ -37,7 +36,9 @@ from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.agents.base_agent import BaseAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
-from typing import Any, Optional
+from typing import Any, List, Optional, Tuple
+
+from utils.text_utils import slugify
 
 try:
     from .tools.validate_rubric import validate_rubric
@@ -136,6 +137,27 @@ class RubricGuardrailPlugin(BasePlugin):
                 return {"status": "valid"}
         return None
 
+    def _get_state_dict(self, callback_context: CallbackContext) -> dict:
+        """Safely get state as dict from callback_context."""
+        try:
+            return callback_context.state.to_dict()
+        except Exception:
+            return {}
+
+    def _get_rubric(self, callback_context: CallbackContext) -> Optional[dict]:
+        """Get the latest rubric dict from state or invocation context."""
+        state_dict = self._get_state_dict(callback_context)
+        rubric = state_dict.get("rubric")
+        if isinstance(rubric, dict):
+            return rubric
+        inv_ctx = getattr(callback_context, "_invocation_context", None)
+        if inv_ctx:
+            session_state = getattr(inv_ctx, "session_state", {}) or {}
+            rubric = session_state.get("rubric")
+            if isinstance(rubric, dict):
+                return rubric
+        return None
+
     def _get_validation_result(self, callback_context: CallbackContext) -> Optional[dict]:
         """Extract rubric validation status from session state.
         
@@ -171,6 +193,19 @@ class RubricGuardrailPlugin(BasePlugin):
         if validation_result is None:
             return False
         return validation_result.get("status") == "valid"
+
+    def _ensure_dynamic_graders(self, agent: BaseAgent, callback_context: CallbackContext) -> None:
+        rubric = self._get_rubric(callback_context)
+        if not rubric:
+            return
+        dynamic_graders, grade_keys = build_graders_from_rubric(rubric)
+        if not dynamic_graders:
+            return
+        agent.sub_agents = dynamic_graders
+        try:
+            callback_context.state["grader_output_keys"] = grade_keys
+        except Exception:
+            pass
 
     def _build_block_message(self, agent_name: str, callback_context: CallbackContext) -> str:
         """Build a user-friendly blocking message."""
@@ -226,6 +261,8 @@ No grading was performed. The pipeline has been safely stopped.
 
         # If rubric is valid, allow the agent to proceed
         if validation_result and validation_result.get("status") == "valid":
+            if agent.name == "ParallelGraders":
+                self._ensure_dynamic_graders(agent, callback_context)
             print(f"[RubricGuardrail] ALLOW agent '{agent.name}' (rubric valid)")
             return None
 
@@ -351,23 +388,13 @@ print("✅ RubricValidatorAgent created")
 # Concept: Day 1 - Parallel Agents
 # =============================================================================
 
-def _slugify(text: str) -> str:
-    """Normalize text to safe identifier (lowercase, ascii, underscores)."""
-    if not text:
-        return "criterion"
-    normalized = unicodedata.normalize("NFKD", text)
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_text)
-    slug = slug.strip("_").lower()
-    return slug or "criterion"
-
 
 def create_criterion_grader(criterion_name: str, criterion_description: str, max_score: int) -> LlmAgent:
     """Factory function to create a grader agent for a specific criterion.
     
     This allows us to create parallel graders dynamically based on the rubric.
     """
-    criterion_slug = _slugify(criterion_name)
+    criterion_slug = slugify(criterion_name)
     return LlmAgent(
         name=f"Grader_{criterion_slug}",
         model=Gemini(model=MODEL, retry_options=retry_config),
@@ -410,6 +437,12 @@ documentation_grader = create_criterion_grader(
     30
 )
 
+DEFAULT_GRADE_OUTPUT_KEYS = [
+    code_quality_grader.output_key,
+    functionality_grader.output_key,
+    documentation_grader.output_key,
+]
+
 # Parallel agent to run all graders simultaneously
 parallel_graders = ParallelAgent(
     name="ParallelGraders",
@@ -419,19 +452,22 @@ parallel_graders = ParallelAgent(
 print("✅ ParallelGraders created (3 criterion graders)")
 
 
-def build_graders_from_rubric(rubric: dict) -> List[LlmAgent]:
-    """Build ParallelGraders sub-agents directly from rubric criteria."""
+def build_graders_from_rubric(rubric: dict) -> Tuple[List[LlmAgent], List[str]]:
+    """Build grader agents and their output keys from rubric criteria."""
     graders: List[LlmAgent] = []
+    grade_keys: List[str] = []
     criteria = rubric.get("criteria") or []
     for criterion in criteria:
         name = criterion.get("name") or "Unnamed Criterion"
         desc = criterion.get("description") or "No description provided"
         max_score = criterion.get("max_score") or 0
+        slug = criterion.get("slug") or slugify(name)
         try:
             graders.append(create_criterion_grader(name, desc, max_score))
+            grade_keys.append(f"grade_{slug}")
         except Exception as exc:
             logging.warning("Failed to create grader for criterion '%s': %s", name, exc)
-    return graders
+    return graders, grade_keys
 
 # =============================================================================
 # AGENT 3: SCORE AGGREGATOR
@@ -442,23 +478,37 @@ aggregator_agent = LlmAgent(
     name="AggregatorAgent",
     model=Gemini(model=MODEL_LITE, retry_options=retry_config),
     description="Aggregates individual criterion grades into a final score",
-    instruction="""You are a grade aggregator. Your job is to:
+    instruction=f"""You are a grade aggregator. Your job is to:
     
     1. Collect all the individual criterion grades from the previous evaluation step
     2. Use the calculate_final_score tool to compute the final grade
     3. Summarize the evaluation results
     
-    Read the grades from the session state:
-    - grade_code_quality
-    - grade_functionality  
-    - grade_documentation
+    Session state references:
+    - `grader_output_keys`: list created by the guardrail when a rubric is validated. Each entry is the key of a grade dict (e.g., grade_teamwork).
+    - `rubric`: the validated rubric, where each criterion has a `name`, `max_score`, and `slug`.
+    - If `grader_output_keys` is missing, fall back to the default keys: {", ".join(DEFAULT_GRADE_OUTPUT_KEYS)}.
     
-    Format the grades as JSON and call calculate_final_score.
-    
-    After calculating, report:
-    - Final score and letter grade
-    - Whether human approval is required
-    - Summary of strengths and areas for improvement""",
+    Workflow:
+    1. Determine which grade keys to use (dynamic list from `grader_output_keys`, or the fallback defaults).
+    2. For each grade key, read the corresponding entry from session state. Each grade contains the criterion metadata and evaluation notes from the grader. Extract the numeric score you need for aggregation and confirm the `max_score` using the rubric data.
+    3. Build a JSON object in the format required by calculate_final_score:
+       {{
+         "grades": [
+           {{
+             "criterion": "<criterion name>",
+             "score": <numeric score between 0 and max_score>,
+             "max_score": <max_score from rubric>,
+             "justification": "Short summary of the grader's notes"
+           }}
+         ]
+       }}
+    4. Call calculate_final_score with the JSON string.
+    5. After calculating, report:
+       - Final score, percentage, and letter grade
+       - Whether human approval is required (and why)
+       - Summary of strengths and areas for improvement, referencing the individual grades.
+    """,
     tools=[calculate_final_score],
     output_key="aggregation_result",
 )

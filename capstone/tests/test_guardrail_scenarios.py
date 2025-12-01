@@ -84,6 +84,25 @@ VALID_RUBRIC = {
     ],
 }
 
+# Custom rubrics to verify truly dynamic behavior (different names/counts)
+CUSTOM_RUBRIC_4 = {
+    "name": "Essay Evaluation Rubric",
+    "criteria": [
+        {"name": "Clarity of Argument", "max_score": 25, "description": "How clear and coherent the argument is"},
+        {"name": "Use of Evidence", "max_score": 25, "description": "Quality and relevance of supporting evidence"},
+        {"name": "Organization", "max_score": 25, "description": "Logical structure and flow"},
+        {"name": "Writing Mechanics", "max_score": 25, "description": "Grammar, spelling, and style"},
+    ],
+}
+
+CUSTOM_RUBRIC_2 = {
+    "name": "Short Presentation Rubric",
+    "criteria": [
+        {"name": "Delivery", "max_score": 50, "description": "Confidence, pacing, and body language"},
+        {"name": "Content", "max_score": 50, "description": "Relevance and depth of content"},
+    ],
+}
+
 INVALID_NO_CRITERIA = {
     "name": "Bad Rubric - No Criteria",
     # Missing "criteria" field
@@ -286,6 +305,168 @@ def test_guardrail_allows_valid_rubric():
     return True
 
 
+def test_parallel_graders_dynamic_creation_from_rubric():
+    """Test: Guardrail injects dynamic graders into ParallelGraders from rubric."""
+    print("\n" + "="*60)
+    print("🧪 TEST 7b: Dynamic ParallelGraders from Valid Rubric")
+    print("="*60)
+
+    # Import here to avoid circular imports during module load
+    from agent import RubricGuardrailPlugin
+
+    plugin = RubricGuardrailPlugin()
+
+    # First, run validate_rubric to simulate normal pipeline behavior
+    tool_ctx = MockToolContext()
+    validate_result = validate_rubric(json.dumps(VALID_RUBRIC), tool_ctx)
+
+    print(f"   validate_rubric result: {validate_result}")
+    print(f"   Tool state after validation: {tool_ctx.state.to_dict()}")
+
+    assert validate_result["status"] == "valid"
+    assert "rubric" in tool_ctx.state._data
+
+    # Use the same state as callback_context for the guardrail
+    callback_ctx = MockCallbackContext(state_data=tool_ctx.state._data)
+
+    # ParallelGraders agent that should receive dynamic sub_agents
+    agent = MockAgent("ParallelGraders")
+
+    print(f"   Before callback - agent.name={agent.name}, has sub_agents? {hasattr(agent, 'sub_agents')}")
+
+    # Run the async before_agent_callback hook
+    async def _run_callback():
+        return await plugin.before_agent_callback(agent=agent, callback_context=callback_ctx)
+
+    result_content = asyncio.run(_run_callback())
+
+    # Guardrail should allow execution (return None) and inject dynamic graders
+    print(f"   before_agent_callback returned: {result_content}")
+    assert result_content is None
+
+    # Check that dynamic graders were created
+    assert hasattr(agent, "sub_agents"), "ParallelGraders should have dynamic sub_agents after guardrail"
+    dynamic_graders = agent.sub_agents
+    rubric = callback_ctx.state.get("rubric")
+    assert rubric is not None, "Rubric should be present in callback context state"
+
+    expected_criteria = rubric["criteria"]
+    print(f"   Dynamic graders created: {len(dynamic_graders)}")
+    print(f"   Rubric criteria count: {len(expected_criteria)}")
+
+    assert len(dynamic_graders) == len(expected_criteria)
+
+    # Slugs and grade keys should match rubric slugs
+    expected_slugs = [c["slug"] for c in expected_criteria]
+    expected_grade_keys = [f"grade_{s}" for s in expected_slugs]
+
+    grader_output_keys = callback_ctx.state.get("grader_output_keys")
+    print(f"   grader_output_keys: {grader_output_keys}")
+
+    assert grader_output_keys == expected_grade_keys
+
+    dynamic_names = [g.name for g in dynamic_graders]
+    print(f"   Dynamic grader names: {dynamic_names}")
+
+    for slug in expected_slugs:
+        expected_name = f"Grader_{slug}"
+        assert expected_name in dynamic_names, f"Expected dynamic grader '{expected_name}' to be created"
+
+    print("   ✅ PASS: ParallelGraders receives dynamic graders and keys from rubric")
+    return True
+
+
+def test_parallel_graders_respects_custom_rubrics():
+    """Test: ParallelGraders follows custom rubrics (non-default names/counts)."""
+    print("\n" + "="*60)
+    print("🧪 TEST 7c: ParallelGraders with Custom Rubrics (4 and 2 criteria)")
+    print("="*60)
+
+    from agent import RubricGuardrailPlugin
+
+    # We'll test two different rubrics: one with 4 criteria, another with 2
+    for rubric in (CUSTOM_RUBRIC_4, CUSTOM_RUBRIC_2):
+        print(f"\n   Testing rubric: {rubric['name']}")
+
+        plugin = RubricGuardrailPlugin()
+        tool_ctx = MockToolContext()
+
+        # Validate rubric and persist to state (adds slugs per criterion)
+        validate_result = validate_rubric(json.dumps(rubric), tool_ctx)
+        print(f"     validate_rubric result: {validate_result}")
+        print(f"     Tool state after validation: {tool_ctx.state.to_dict()}")
+
+        assert validate_result["status"] == "valid"
+        assert "rubric" in tool_ctx.state._data
+
+        # Use validated state as callback context
+        callback_ctx = MockCallbackContext(state_data=tool_ctx.state._data)
+        agent = MockAgent("ParallelGraders")
+
+        # Run guardrail callback to inject dynamic graders
+        async def _run_callback():
+            return await plugin.before_agent_callback(agent=agent, callback_context=callback_ctx)
+
+        result_content = asyncio.run(_run_callback())
+        print(f"     before_agent_callback returned: {result_content}")
+        assert result_content is None
+
+        # Confirm dynamic graders and keys
+        assert hasattr(agent, "sub_agents"), "ParallelGraders should have dynamic sub_agents after guardrail"
+        dynamic_graders = agent.sub_agents
+        rubric_state = callback_ctx.state.get("rubric")
+        assert rubric_state is not None
+
+        expected_criteria = rubric_state["criteria"]
+        print(f"     Dynamic graders created: {len(dynamic_graders)}")
+        print(f"     Rubric criteria count: {len(expected_criteria)}")
+        assert len(dynamic_graders) == len(expected_criteria)
+
+        expected_slugs = [c["slug"] for c in expected_criteria]
+        expected_grade_keys = [f"grade_{s}" for s in expected_slugs]
+        grader_output_keys = callback_ctx.state.get("grader_output_keys")
+
+        print(f"     grader_output_keys: {grader_output_keys}")
+        assert grader_output_keys == expected_grade_keys
+
+        dynamic_names = [g.name for g in dynamic_graders]
+        print(f"     Dynamic grader names: {dynamic_names}")
+
+        for slug in expected_slugs:
+            expected_name = f"Grader_{slug}"
+            assert expected_name in dynamic_names, f"Expected dynamic grader '{expected_name}' to be created for slug '{slug}'"
+
+        # Inspect prompts for each dynamic grader to ensure rubric data is injected
+        for grader, criterion in zip(dynamic_graders, expected_criteria):
+            crit_name = criterion["name"]
+            crit_desc = criterion["description"]
+            max_score = criterion["max_score"]
+
+            print("     --- Dynamic grader prompt inspection ---")
+            print(f"       Grader name: {grader.name}")
+            print(f"       Description: {grader.description}")
+            print(f"       Instruction (truncated): {grader.instruction[:200]}...")
+
+            # Description should reference the rubric criterion name
+            assert crit_name in grader.description, (
+                f"Grader description should contain criterion name '{crit_name}'"
+            )
+
+            # Instruction should include criterion name, description, and max_score
+            assert crit_name in grader.instruction, (
+                f"Grader instruction should contain criterion name '{crit_name}'"
+            )
+            assert crit_desc in grader.instruction, (
+                f"Grader instruction should contain criterion description '{crit_desc}'"
+            )
+            assert str(max_score) in grader.instruction, (
+                f"Grader instruction should mention max_score '{max_score}'"
+            )
+
+    print("   ✅ PASS: ParallelGraders respects custom rubrics (names and counts)")
+    return True
+
+
 def test_guardrail_blocks_invalid_rubric():
     """Test: Guardrail blocks protected agents when rubric is invalid."""
     print("\n" + "="*60)
@@ -464,6 +645,8 @@ def run_all_tests():
         ("Validate invalid JSON", test_validate_rubric_invalid_json),
         # Guardrail plugin tests
         ("Guardrail allows valid rubric", test_guardrail_allows_valid_rubric),
+        ("Dynamic ParallelGraders from rubric", test_parallel_graders_dynamic_creation_from_rubric),
+        ("ParallelGraders respects custom rubrics", test_parallel_graders_respects_custom_rubrics),
         ("Guardrail blocks invalid rubric", test_guardrail_blocks_invalid_rubric),
         ("Guardrail blocks missing validation", test_guardrail_blocks_missing_validation),
         ("Guardrail ignores unprotected agents", test_guardrail_ignores_unprotected_agents),
