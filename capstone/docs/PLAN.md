@@ -2,13 +2,14 @@
 
 ## 📋 Project Overview
 
-**Name:** Smart Grading Assistant  
-**Duration:** 4 days  
+**Name:** Smart Grading Assistant
+**Duration:** 4 days
 **Goal:** Multi-agent system for automated academic grading with human oversight
 
 ## 🎯 Problem Statement
 
 Teachers spend countless hours grading student submissions manually. This process is:
+
 - Time-consuming and repetitive
 - Prone to inconsistency across different submissions
 - Lacking in detailed, constructive feedback
@@ -16,6 +17,7 @@ Teachers spend countless hours grading student submissions manually. This proces
 ## 💡 Solution
 
 A multi-agent AI system that:
+
 1. Validates grading rubrics before evaluation
 2. Evaluates submissions against multiple criteria in parallel
 3. Consolidates scores with detailed justifications
@@ -67,44 +69,48 @@ A multi-agent AI system that:
 
 ## ✅ Course Concepts Covered (6+)
 
-| # | Concept | Implementation | Points |
-|---|---------|----------------|--------|
-| 1 | **Multi-agent (Sequential)** | Validator → Graders → Aggregator → Feedback | ✓ |
-| 2 | **Multi-agent (Parallel)** | Multiple criteria evaluated simultaneously | ✓ |
-| 3 | **Custom Tools** | validate_rubric(), grade_criterion(), calculate_score() | ✓ |
-| 4 | **Human-in-the-Loop** | Approval for edge cases (score < 5 or > 9) | ✓ |
-| 5 | **Sessions & Memory** | Remember past evaluations for consistency | ✓ |
-| 6 | **Observability** | LoggingPlugin for audit trail | ✓ |
-| 7 | **Plugins & Guardrails** | RubricGuardrailPlugin (before_agent_callback) enforcing rubric validation before grading | ✓ |
-| 8 | **Gemini** | Main model (bonus points) | +5 |
+| # | Concept                            | Implementation                                                                           | Points |
+| - | ---------------------------------- | ---------------------------------------------------------------------------------------- | ------ |
+| 1 | **Multi-agent (Sequential)** | Validator → Graders → Aggregator → Feedback                                           | ✓     |
+| 2 | **Multi-agent (Parallel)**   | Multiple criteria evaluated simultaneously                                               | ✓     |
+| 3 | **Custom Tools**             | validate_rubric(), grade_criterion(), calculate_score()                                  | ✓     |
+| 4 | **Human-in-the-Loop**        | Approval for edge cases (score < 5 or > 9)                                               | ✓     |
+| 5 | **Sessions & Memory**        | Remember past evaluations for consistency                                                | ✓     |
+| 6 | **Observability**            | LoggingPlugin for audit trail                                                            | ✓     |
+| 7 | **Plugins & Guardrails**     | RubricGuardrailPlugin (before_agent_callback) enforcing rubric validation before grading | ✓     |
+| 8 | **Gemini**                   | Main model (bonus points)                                                                | +5     |
 
 ## 📅 4-Day Implementation Plan
 
 ### Day 1: Foundation + Validator Agent
-- [x] Create project structure
-- [ ] Implement `validate_rubric()` tool
-- [ ] Implement `RubricValidatorAgent`
-- [ ] Test validation flow
-- [ ] Set up logging
+
+- [X] Create project structure
+- [X] Implement `validate_rubric()` tool
+- [X] Implement `RubricValidatorAgent`
+- [X] Test validation flow
+- [X] Set up logging
 
 ### Day 2: Parallel Grading Agents
-- [ ] Implement `grade_criterion()` tool
-- [ ] Create dynamic `CriterionGraderAgent` factory
-- [ ] Implement `ParallelAgent` for grading
-- [ ] Test parallel evaluation
+
+- [X] Implement `grade_criterion()` tool
+- [X] Create dynamic `CriterionGraderAgent` factory
+- [X] Implement `ParallelAgent` for grading
+- [X] Test parallel evaluation
 
 ### Day 3: Aggregation + Human-in-the-Loop
-- [ ] Implement `calculate_score()` tool
-- [ ] Implement `AggregatorAgent`
-- [ ] Add Human-in-the-Loop with `request_confirmation`
-- [ ] Implement `FeedbackGeneratorAgent`
-- [ ] Add Memory (DatabaseSessionService)
+
+- [X] Implement `calculate_score()` tool
+- [X] Implement `AggregatorAgent`
+- [X] Add Human-in-the-Loop with `request_confirmation`
+- [X] Implement `FeedbackGeneratorAgent`
+- [X] Add Memory (DatabaseSessionService)
 
 ### Day 4: Polish + Documentation
-- [ ] Add Observability (LoggingPlugin)
-- [ ] Add Rubric Guardrail (RubricGuardrailPlugin) to block grading when rubric is not valid
-- [ ] Create comprehensive README.md
-- [ ] Add example rubrics and submissions
+
+- [X] Add Observability (LoggingPlugin)
+- [X] Add Rubric Guardrail (RubricGuardrailPlugin) to block grading when rubric is not valid
+- [X] Create comprehensive README.md
+- [X] Add example rubrics and submissions
 - [ ] Create Streamlit frontend (optional)
 - [ ] Record demo video (optional)
 
@@ -146,15 +152,15 @@ capstone/
 
 ## 📊 Evaluation Criteria Mapping
 
-| Criteria | Points | Our Implementation |
-|----------|--------|-------------------|
-| Core Concept & Value | 15 | Real-world problem, clear agent use |
-| Writeup | 15 | Comprehensive README |
-| Technical Implementation | 50 | 6+ concepts, clean architecture |
-| Documentation | 20 | README + inline comments |
-| **Bonus: Gemini** | 5 | Using Gemini 2.5 Flash |
-| **Bonus: Deployment** | 5 | (Optional) Cloud Run |
-| **Bonus: Video** | 10 | (Optional) 3-min demo |
+| Criteria                    | Points | Our Implementation                  |
+| --------------------------- | ------ | ----------------------------------- |
+| Core Concept & Value        | 15     | Real-world problem, clear agent use |
+| Writeup                     | 15     | Comprehensive README                |
+| Technical Implementation    | 50     | 6+ concepts, clean architecture     |
+| Documentation               | 20     | README + inline comments            |
+| **Bonus: Gemini**     | 5      | Using Gemini 2.5 Flash              |
+| **Bonus: Deployment** | 5      | (Optional) Cloud Run                |
+| **Bonus: Video**      | 10     | (Optional) 3-min demo               |
 
 **Expected Score:** 85-100 points
 

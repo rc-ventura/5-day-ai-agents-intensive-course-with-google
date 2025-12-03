@@ -7,7 +7,7 @@ Architecture: Root Agent -> Rubric Validator -> Grading Pipeline -> Feedback
 
 import os
 
-from google.adk.apps.app import App
+from google.adk.apps.app import App, EventsCompactionConfig
 from google.adk.plugins import LoggingPlugin
 from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
@@ -34,9 +34,13 @@ grading_app = App(
         LoggingPlugin(),
         RubricGuardrailPlugin(build_graders_fn=build_graders_from_rubric),
     ],
+    events_compaction_config=EventsCompactionConfig(
+        compaction_interval=6,  # summarize history every 6 invocations
+        overlap_size=2,         # keep last 2 turns verbatim for continuity
+    ),
 )
 
-print("✅ App configured (Resumability disabled)")
+print("✅ App configured with context compaction (Resumability disabled)")
 
 # =============================================================================
 # SESSION & RUNNER SETUP
