@@ -20,6 +20,13 @@ All live sessions are available in the following YouTube playlist:
 
 Each `dayXX-*` folder in this repo represents an incremental content block, with examples ranging from a simple agent to agents with persistent state, tools, and context compaction.
 
+## 📚 About Capstone (final project)
+
+In the final part of the course, students were required to build a final project applying the knowledge they gained throughout the program. Below is the link to this capstone repository:
+
+> https://github.com/rc-ventura/5-day-ai-agents-intensive-course-with-google/tree/master/capstone
+
+
 ## 📁 Repository structure
 
 - **day01-agentic/**  
