@@ -7,8 +7,15 @@ Used by the parallel grading agents to evaluate different aspects simultaneously
 Concept from course: Day 2 - Custom Tools (FunctionTool)
 """
 
-from typing import Any
+from typing import Optional
 
+from google.adk.tools.tool_context import ToolContext
+
+try:
+    # When imported as part of the capstone package
+    from ..utils.text_utils import slugify
+except ImportError:  # When running this module directly inside capstone/
+    from utils.text_utils import slugify
 
 def grade_criterion(
     criterion_name: str,
@@ -16,7 +23,8 @@ def grade_criterion(
     max_score: int,
     score: float,
     submission_content: str,
-    evaluation_notes: str
+    evaluation_notes: str,
+    tool_context: Optional[ToolContext] = None
 ) -> dict:
     """Records the grade for a single criterion based on agent's evaluation.
     
@@ -30,6 +38,7 @@ def grade_criterion(
         max_score: Maximum possible score for this criterion
         submission_content: The student's submission text/code being evaluated
         evaluation_notes: The agent's detailed evaluation notes and justification
+        context: Optional ToolContext to persist the result
     
     Returns:
         Dictionary with the grading result:
@@ -87,13 +96,28 @@ def grade_criterion(
         }
     
     # Return structured result for the aggregator
-    return {
+    result = {
         "status": "graded",
         "criterion": criterion_name,
         "criterion_description": criterion_description,
         "max_score": max_score,
         "score": numeric_score,
         "evaluation_notes": evaluation_notes,
-        "submission_preview": submission_content[:200] + "..." if len(submission_content) > 200 else submission_content,
-        "message": f"Criterion '{criterion_name}' (max {max_score} pts) has been evaluated"
+        "submission_preview": (
+            submission_content[:200] + "..." if len(submission_content) > 200 else submission_content
+        ),
+        "message": f"Criterion '{criterion_name}' (max {max_score} pts) has been evaluated",
     }
+
+    # Persist result in session state for AggregatorAgent under grade_<slug>_dict
+    if tool_context is not None:
+        try:
+            # Use the same slug pattern as the rest of the system
+            slug = slugify(criterion_name)
+            state_key = f"grade_{slug}_dict"  # e.g. grade_code_quality_dict
+            tool_context.state[state_key] = result
+        except Exception:
+            # Best-effort: do not break grading if state is not writable
+            pass
+
+    return result

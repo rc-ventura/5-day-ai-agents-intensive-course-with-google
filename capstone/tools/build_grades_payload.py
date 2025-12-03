@@ -73,6 +73,15 @@ def build_grades_payload(tool_context: ToolContext) -> Dict[str, Any]:
         except Exception:
             grade_data = None
 
+        # Primary location: state["grade_<slug>"] (if a previous version saved dicts here)
+        # Fallback: state["grade_<slug>_dict"] saved by grade_criterion tool.
+        if not isinstance(grade_data, dict):
+            alt_key = f"{key}_dict"
+            try:
+                grade_data = state.get(alt_key)
+            except Exception:
+                grade_data = None
+
         if not isinstance(grade_data, dict):
             errors.append(f"Missing or invalid grade data for key '{key}'")
             continue

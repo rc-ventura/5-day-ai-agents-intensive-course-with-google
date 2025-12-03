@@ -8,10 +8,15 @@ Concept from course: Day 2 - Custom Tools (FunctionTool)
 """
 
 import json
-from typing import Any
+from typing import Any, Optional
+
+try:
+    from google.adk.tools.tool_context import ToolContext
+except ImportError:
+    ToolContext = None
 
 
-def calculate_final_score(grades_json: str) -> dict:
+def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) -> dict:
     """Calculates the final score from individual criterion grades.
     
     This tool aggregates all criterion scores, calculates the final grade,
@@ -115,7 +120,7 @@ def calculate_final_score(grades_json: str) -> dict:
         requires_approval = True
         approval_reason = f"Score {percentage}% is exceptional (>90%). Please verify the evaluation is accurate."
     
-    return {
+    result = {
         "status": "success",
         "total_score": total_score,
         "max_possible": max_possible,
@@ -126,6 +131,15 @@ def calculate_final_score(grades_json: str) -> dict:
         "approval_reason": approval_reason,
         "message": f"Final score: {total_score}/{max_possible} ({percentage}%) - Grade: {letter_grade}"
     }
+    
+    # Save to session state if tool_context is available
+    if tool_context is not None:
+        try:
+            tool_context.state["aggregation_result"] = result
+        except Exception:
+            pass  # Best effort - don't break if state is not writable
+    
+    return result
 
 
 def _get_letter_grade(percentage: float) -> str:
