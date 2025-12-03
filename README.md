@@ -84,7 +84,7 @@ At the end of the course, you can build a **capstone project** that integrates s
 
 A possible repository for this capstone (fictional link) could be:
 
-> https://github.com/your-username/ai-agents-capstone
+> https://github.com/rc-ventura/5-day-ai-agents-intensive-course-with-google/tree/master/capstone
 
 There you could organize a more complete agent, for example: an assistant that researches, plans, and executes study or software-development tasks using the ADK.
 
