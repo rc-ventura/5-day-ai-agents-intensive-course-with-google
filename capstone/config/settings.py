@@ -5,7 +5,6 @@ import logging
 from dotenv import load_dotenv
 from google.genai import types
 
-# Load environment variables
 load_dotenv()
 
 # Paths

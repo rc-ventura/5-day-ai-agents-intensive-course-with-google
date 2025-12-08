@@ -7,14 +7,15 @@ from google.adk.agents import LlmAgent, ParallelAgent
 from google.adk.models.google_llm import Gemini
 
 from ..config import MODEL_LITE, retry_config
-from ..tools.grade_criterion import grade_criterion
+from ..schemas import CriterionGrade
 from ..utils.text_utils import slugify
 
 
 def create_criterion_grader(criterion_name: str, criterion_description: str, max_score: int) -> LlmAgent:
     """Factory function to create a grader agent for a specific criterion.
     
-    This allows us to create graders dynamically based on the rubric.
+    Uses output_schema to FORCE structured JSON output, preventing the LLM
+    from returning plain text that breaks the aggregator.
     """
     criterion_slug = slugify(criterion_name)
     return LlmAgent(
@@ -23,28 +24,25 @@ def create_criterion_grader(criterion_name: str, criterion_description: str, max
         description=f"Evaluates submissions for: {criterion_name}",
         instruction=f"""You are an expert evaluator for the criterion: "{criterion_name}"
         
-        Criterion Description: {criterion_description}
-        Maximum Score: {max_score} points
-        
-        IMPORTANT: The student submission is available in the conversation history (it was saved earlier).
-        Look for the code/text that was submitted by the student.
-        
-        Your task:
-        1. Find and read the student's submission from the conversation
-        2. Evaluate it against this specific criterion: {criterion_name}
-        3. Determine a score from 0 to {max_score}
-        4. Call the grade_criterion tool ONCE with:
-           - criterion_name: "{criterion_name}"
-           - criterion_description: "{criterion_description}"
-           - max_score: {max_score}
-           - score: your determined score
-           - submission_content: the student's submission text
-           - evaluation_notes: your detailed evaluation
-        5. After calling the tool, do NOT generate any additional text
-        
-        Be fair, consistent, and constructive in your evaluation notes.
-        Focus ONLY on this criterion.""",
-        tools=[grade_criterion],
+Criterion Description: {criterion_description}
+Maximum Score: {max_score} points
+
+IMPORTANT: The student submission is available in session state as "submission_text".
+Look for the code/text that was submitted by the student.
+
+Your task:
+1. Find and read the student's submission from the conversation or state
+2. Evaluate it against this specific criterion: {criterion_name}
+3. Determine a score from 0 to {max_score}
+4. Return your evaluation as structured JSON with these EXACT fields:
+   - criterion_name: "{criterion_name}"
+   - max_score: {max_score}
+   - score: your determined score (number between 0 and {max_score})
+   - evaluation_notes: your detailed evaluation justification
+
+Be fair, consistent, and constructive in your evaluation notes.
+Focus ONLY on this criterion. Do NOT include any text outside the JSON structure.""",
+        output_schema=CriterionGrade,
         output_key=f"grade_{criterion_slug}",
     )
 

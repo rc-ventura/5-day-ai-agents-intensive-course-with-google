@@ -2,39 +2,26 @@
 Calculate Final Score Tool
 
 This tool calculates the final score from individual criterion grades
-and determines if human approval is needed.
+stored in session state. It reads the structured outputs from graders
+and aggregates them.
 
 Concept from course: Day 2 - Custom Tools (FunctionTool)
 """
 
 import json
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
-try:
-    from google.adk.tools.tool_context import ToolContext
-except ImportError:
-    ToolContext = None
+from google.adk.tools.tool_context import ToolContext
 
 
-def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) -> dict:
-    """Calculates the final score from individual criterion grades.
+def calculate_final_score(tool_context: ToolContext) -> dict:
+    """Calculates the final score from criterion grades in session state.
     
-    This tool aggregates all criterion scores, calculates the final grade,
-    and determines if human approval is required based on thresholds.
+    This tool reads grades directly from session state (populated by graders
+    using output_schema) and aggregates them into a final score.
     
-    Args:
-        grades_json: JSON string with grades for each criterion.
-                    Expected format:
-                    {
-                        "grades": [
-                            {
-                                "criterion": "Code Quality",
-                                "score": 25,
-                                "max_score": 30,
-                                "justification": "Clean code with good naming..."
-                            }
-                        ]
-                    }
+    The graders store their results in state keys like "grade_code_quality"
+    with CriterionGrade schema: {criterion_name, max_score, score, evaluation_notes}
     
     Returns:
         Dictionary with final score calculation:
@@ -44,31 +31,98 @@ def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) 
             "max_possible": 100,
             "percentage": 85.0,
             "letter_grade": "B",
+            "grade_details": [...],
             "requires_human_approval": True/False,
             "approval_reason": "Score below 50%" or None
         }
     """
+    state = tool_context.state
     
-    # Parse JSON
+    # Get grader output keys from state
     try:
-        data = json.loads(grades_json)
-    except json.JSONDecodeError as e:
+        grader_output_keys = state.get("grader_output_keys")
+    except Exception:
+        grader_output_keys = None
+    
+    if not grader_output_keys:
+        # Try to infer from rubric
+        try:
+            rubric = state.get("rubric")
+            if rubric and isinstance(rubric, dict):
+                criteria = rubric.get("criteria", [])
+                grader_output_keys = [f"grade_{c.get('slug')}" for c in criteria if c.get('slug')]
+        except Exception:
+            pass
+    
+    if not grader_output_keys:
         return {
             "status": "error",
-            "error_message": f"Invalid JSON format: {str(e)}"
+            "error_message": "No grader_output_keys found in state. Graders may not have run.",
+            "recoverable": True,
+            "suggestion": "Ensure parallel graders completed successfully before aggregation."
         }
     
-    # Validate structure
-    if "grades" not in data:
+    # Collect grades from state
+    grades: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    
+    for key in grader_output_keys:
+        grade_data = None
+        
+        # Try multiple locations where grade might be stored
+        for try_key in [key, f"{key}_dict"]:
+            try:
+                grade_data = state.get(try_key)
+                if isinstance(grade_data, dict) and "score" in grade_data:
+                    break
+                # Handle Pydantic model stored as dict
+                if isinstance(grade_data, dict) and "criterion_name" in grade_data:
+                    break
+            except Exception:
+                continue
+        
+        if not isinstance(grade_data, dict):
+            errors.append(f"Missing grade data for '{key}'")
+            continue
+        
+        # Extract score and max_score (handle both old and new schema)
+        score = grade_data.get("score")
+        max_score = grade_data.get("max_score")
+        criterion_name = grade_data.get("criterion_name") or grade_data.get("criterion", "Unknown")
+        justification = grade_data.get("evaluation_notes") or grade_data.get("justification", "")
+        
+        if score is None or max_score is None:
+            errors.append(f"Grade '{key}' missing score or max_score")
+            continue
+        
+        try:
+            score = float(score)
+            max_score = float(max_score)
+        except (TypeError, ValueError):
+            errors.append(f"Grade '{key}' has non-numeric score/max_score")
+            continue
+        
+        grades.append({
+            "criterion": criterion_name,
+            "score": score,
+            "max_score": max_score,
+            "justification": justification,
+        })
+    
+    if errors and not grades:
         return {
             "status": "error",
-            "error_message": "Missing 'grades' field"
+            "error_message": "; ".join(errors),
+            "recoverable": True,
+            "suggestion": "Check that all graders completed and stored their results."
         }
     
-    if not isinstance(data["grades"], list) or len(data["grades"]) == 0:
+    if not grades:
         return {
             "status": "error",
-            "error_message": "'grades' must be a non-empty list"
+            "error_message": "No valid grades found to aggregate.",
+            "recoverable": True,
+            "suggestion": "Ensure graders ran and stored results in session state."
         }
     
     # Calculate totals
@@ -76,17 +130,11 @@ def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) 
     max_possible = 0
     grade_details = []
     
-    for grade in data["grades"]:
-        if "score" not in grade or "max_score" not in grade:
-            return {
-                "status": "error",
-                "error_message": f"Each grade must have 'score' and 'max_score' fields"
-            }
-        
+    for grade in grades:
         score = grade["score"]
         max_score = grade["max_score"]
         
-        # Validate score is within bounds
+        # Clamp score to valid range
         if score < 0:
             score = 0
         if score > max_score:
@@ -96,10 +144,10 @@ def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) 
         max_possible += max_score
         
         grade_details.append({
-            "criterion": grade.get("criterion", "Unknown"),
+            "criterion": grade["criterion"],
             "score": score,
             "max_score": max_score,
-            "percentage": round((score / max_score) * 100, 1) if max_score > 0 else 0
+            "justification": grade["justification"],
         })
     
     # Calculate percentage
@@ -109,16 +157,15 @@ def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) 
     letter_grade = _get_letter_grade(percentage)
     
     # Determine if human approval is needed
-    # Thresholds: score < 50% (failing) or score > 90% (exceptional)
     requires_approval = False
     approval_reason = None
     
     if percentage < 50:
         requires_approval = True
-        approval_reason = f"Score {percentage}% is below passing threshold (50%). Please review before confirming."
+        approval_reason = f"Score {percentage}% is below passing threshold (50%). Please review."
     elif percentage > 90:
         requires_approval = True
-        approval_reason = f"Score {percentage}% is exceptional (>90%). Please verify the evaluation is accurate."
+        approval_reason = f"Score {percentage}% is exceptional (>90%). Please verify accuracy."
     
     result = {
         "status": "success",
@@ -132,12 +179,11 @@ def calculate_final_score(grades_json: str, tool_context: Optional[Any] = None) 
         "message": f"Final score: {total_score}/{max_possible} ({percentage}%) - Grade: {letter_grade}"
     }
     
-    # Save to session state if tool_context is available
-    if tool_context is not None:
-        try:
-            tool_context.state["aggregation_result"] = result
-        except Exception:
-            pass  # Best effort - don't break if state is not writable
+    # Save to session state for downstream agents
+    try:
+        tool_context.state["aggregation_result"] = result
+    except Exception:
+        pass
     
     return result
 

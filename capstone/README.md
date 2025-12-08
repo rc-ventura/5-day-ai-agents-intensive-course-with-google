@@ -69,14 +69,14 @@ Traditional automation struggles with the nuanced nature of academic evaluation.
 │  ┌──────────────────────────────────────┐                       │
 │  │     2. ParallelAgent                  │                       │
 │  │     ┌────────────────────────────┐   │                       │
-│  │     │ CriterionGrader1           │   │ ← grade_criterion()   │
-│  │     │ CriterionGrader2           │   │                       │
+│  │     │ CriterionGrader1           │   │ ← CriterionGrade      │
+│  │     │ CriterionGrader2           │   │    (output_schema)    │
 │  │     │ CriterionGrader3           │   │                       │
 │  │     └────────────────────────────┘   │                       │
 │  └──────────────────────────────────────┘                       │
 │                          ↓                                       │
 │  ┌──────────────────────────────────────┐                       │
-│  │     3. AggregatorAgent               │ ← calculate_score()   │
+│  │     3. AggregatorAgent               │ ← calculate_final_score() │
 │  │     Consolidates all grades           │                       │
 │  └──────────────────────────────────────┘                       │
 │                          ↓                                       │
@@ -112,6 +112,16 @@ Traditional automation struggles with the nuanced nature of academic evaluation.
 
 ---
 
+## 🧱 Design decisions: structured outputs
+
+- **Antes:** cada CriterionGrader chamava a tool `grade_criterion()` que escrevia dicts em `state`, e o `AggregatorAgent` usava `build_grades_payload` → `calculate_final_score(grades_json)`.
+- **Problema:** às vezes o LLM não chamava a tool e devolvia texto livre, o que quebrava o aggregator e o pipeline sequencial.
+- **Agora:** cada grader usa `output_schema=CriterionGrade` e grava `grade_<slug>` diretamente no `state`. O `AggregatorAgent` chama apenas `calculate_final_score(tool_context)`, que:
+  - lê `grader_output_keys` + `grade_*` do `state`;
+  - agrega total, percentual e nota;
+  - retorna um `AggregationResult` validado por Pydantic.
+- **Resultado:** fluxo mais robusto (sem strings soltas), menos tools desnecessárias e contratos de dados claros entre agentes.
+
 ## 📚 Course Concepts Applied
 
 This capstone demonstrates **6+ key concepts** from the 5-Day AI Agents Intensive Course:
@@ -120,7 +130,7 @@ This capstone demonstrates **6+ key concepts** from the 5-Day AI Agents Intensiv
 | - | ---------------------------------- | ------------------------------------------------------------------------------- | ---------- |
 | 1 | **Multi-agent (Sequential)** | Validator → Graders → Aggregator → Feedback                                  | Day 1      |
 | 2 | **Multi-agent (Parallel)**   | Multiple criteria graders run simultaneously                                    | Day 1      |
-| 3 | **Custom Tools**             | `validate_rubric()`, `grade_criterion()`, `calculate_score()`             | Day 2      |
+| 3 | **Custom Tools**             | `validate_rubric()`, `save_submission()`, `calculate_final_score()`       | Day 2      |
 | 4 | **Human-in-the-Loop**        | `request_confirmation` for edge case grades                                   | Day 2      |
 | 5 | **Sessions & Memory**        | `DatabaseSessionService` + context-compaction for persistent, trimmed history | Day 3      |
 | 6 | **Observability**            | `LoggingPlugin` for audit trail                                               | Day 4      |
@@ -226,8 +236,8 @@ During a typical session, the Smart Grading Assistant will:
 2. **Confirm rubric validity** (or return structured errors if invalid).
 3. **Ask for the student submission** and call the `save_submission` tool with the pasted text.
 4. **Transfer to `GradingPipeline`**, which triggers the following agents/tools in order:
-   - `ParallelGraders` → each criterion-specific `grade_criterion` tool call.
-   - `AggregatorAgent` → `build_grades_payload` then `calculate_final_score`.
+   - `ParallelGraders` → each criterion-specific grader returns structured JSON using the `CriterionGrade` output schema.
+   - `AggregatorAgent` → chama apenas `calculate_final_score`, que lê todos os `grade_*` do session state e calcula o resultado final.
    - `ApprovalAgent` → `finalize_grade` (with human confirmation if <50% or >90%).
    - `FeedbackGeneratorAgent` → generates the final summary for the student.
 5. **Return final results** summarizing per-criterion scores, overall grade, approval status, and feedback.
@@ -260,13 +270,11 @@ capstone/
 │   └── rubric_guardrail.py
 ├── tools/                    # Function tools used by agents
 │   ├── __init__.py
-│   ├── build_grades_payload.py
 │   ├── calculate_score.py
-│   ├── grade_criterion.py
+│   ├── grade_criterion.py    # legacy Day 2 example (não usado no pipeline principal)
 │   ├── save_submission.py
 │   └── validate_rubric.py
 ├── tests/                    # Pytest suites for tools/workflow
-│   ├── test_build_grades_payload.py
 │   ├── test_calculate_score.py
 │   └── test_request_grade_approval.py
 ├── examples/                 # Sample rubrics & submissions

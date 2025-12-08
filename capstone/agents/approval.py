@@ -39,12 +39,11 @@ def finalize_grade(
 
 
 async def needs_approval(
-    final_score: float, 
-    max_score: float, 
-    percentage: float, 
-    letter_grade: str, 
-    reason: str, 
-    tool_context: ToolContext
+    final_score: float,
+    max_score: float,
+    percentage: float,
+    letter_grade: str,
+    reason: str,
 ) -> bool:
     """Returns True if the grade requires human approval (< 50% or > 90%)."""
     return percentage < 50 or percentage > 90
