@@ -8,7 +8,7 @@ These tests verify:
 
 import asyncio
 
-from capstone.agent import finalize_grade, needs_approval
+from capstone.agents.approval import finalize_grade, needs_approval
 
 
 class MockToolContext:
@@ -45,7 +45,6 @@ def test_needs_approval_low_score():
         percentage=40.0,
         letter_grade="F",
         reason="Low score",
-        tool_context=ctx,
     ))
     
     assert result is True
@@ -61,7 +60,6 @@ def test_needs_approval_high_score():
         percentage=95.0,
         letter_grade="A",
         reason="Exceptional score",
-        tool_context=ctx,
     ))
     
     assert result is True
@@ -77,7 +75,6 @@ def test_needs_approval_normal_score():
         percentage=75.0,
         letter_grade="C",
         reason="Normal score",
-        tool_context=ctx,
     ))
     
     assert result is False

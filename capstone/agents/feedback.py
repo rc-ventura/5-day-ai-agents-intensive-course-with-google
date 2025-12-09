@@ -4,7 +4,7 @@ from google.adk.agents import LlmAgent
 
 from ..services.gemini_client import get_model, get_agent_generate_config
 from ..config import MODEL_LITE, retry_config
-from ..schemas import FinalFeedback
+from ..models.schemas import FinalFeedback
 
 
 feedback_agent = LlmAgent(

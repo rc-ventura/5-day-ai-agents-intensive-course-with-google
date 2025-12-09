@@ -15,13 +15,10 @@ Each test prints clear markers showing when guardrail is invoked.
 
 import asyncio
 import json
-import sys
-import os
+from capstone.tools.validate_rubric import validate_rubric
+from capstone.agent import RubricGuardrailPlugin
+from capstone.agents import build_graders_from_rubric
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from tools.validate_rubric import validate_rubric
 
 
 # =============================================================================
@@ -155,7 +152,6 @@ def test_validate_rubric_valid():
     assert ctx.state["rubric"]["criteria"][0]["name"] == "Code Quality"
     
     print("   ✅ PASS: Valid rubric correctly validated")
-    return True
 
 
 def test_validate_rubric_no_criteria():
@@ -176,7 +172,6 @@ def test_validate_rubric_no_criteria():
     assert ctx.state["rubric_validation"]["status"] == "invalid"
     
     print("   ✅ PASS: Missing criteria correctly rejected")
-    return True
 
 
 def test_validate_rubric_empty_criteria():
@@ -197,7 +192,6 @@ def test_validate_rubric_empty_criteria():
     assert ctx.state["rubric_validation"]["status"] == "invalid"
     
     print("   ✅ PASS: Empty criteria correctly rejected")
-    return True
 
 
 def test_validate_rubric_incomplete_criterion():
@@ -219,7 +213,6 @@ def test_validate_rubric_incomplete_criterion():
     assert ctx.state["rubric_validation"]["status"] == "invalid"
     
     print("   ✅ PASS: Incomplete criterion correctly rejected")
-    return True
 
 
 def test_validate_rubric_bad_score():
@@ -240,7 +233,6 @@ def test_validate_rubric_bad_score():
     assert ctx.state["rubric_validation"]["status"] == "invalid"
     
     print("   ✅ PASS: Negative score correctly rejected")
-    return True
 
 
 def test_validate_rubric_invalid_json():
@@ -261,7 +253,6 @@ def test_validate_rubric_invalid_json():
     assert ctx.state["rubric_validation"]["status"] == "invalid"
     
     print("   ✅ PASS: Invalid JSON correctly rejected")
-    return True
 
 
 # =============================================================================
@@ -274,10 +265,8 @@ def test_guardrail_allows_valid_rubric():
     print("🧪 TEST 7: Guardrail ALLOWS with Valid Rubric")
     print("="*60)
     
-    # Import here to avoid circular imports during module load
-    from agent import RubricGuardrailPlugin
     
-    plugin = RubricGuardrailPlugin()
+    plugin = RubricGuardrailPlugin(build_graders_fn=build_graders_from_rubric)
     
     # Simulate state after valid rubric validation
     ctx = MockCallbackContext(state_data={
@@ -302,7 +291,6 @@ def test_guardrail_allows_valid_rubric():
     assert validation_result["status"] == "valid"
     
     print("   ✅ PASS: Guardrail correctly allows valid rubric")
-    return True
 
 
 def test_parallel_graders_dynamic_creation_from_rubric():
@@ -311,10 +299,8 @@ def test_parallel_graders_dynamic_creation_from_rubric():
     print("🧪 TEST 7b: Dynamic ParallelGraders from Valid Rubric")
     print("="*60)
 
-    # Import here to avoid circular imports during module load
-    from agent import RubricGuardrailPlugin
 
-    plugin = RubricGuardrailPlugin()
+    plugin = RubricGuardrailPlugin(build_graders_fn=build_graders_from_rubric)
 
     # First, run validate_rubric to simulate normal pipeline behavior
     tool_ctx = MockToolContext()
@@ -326,7 +312,13 @@ def test_parallel_graders_dynamic_creation_from_rubric():
     assert validate_result["status"] == "valid"
     assert "rubric" in tool_ctx.state._data
 
-    # Use the same state as callback_context for the guardrail
+    # Ensure criteria have slugs so build_graders_from_rubric can produce keys
+    from capstone.utils.text_utils import slugify
+    rubric_dict = tool_ctx.state._data.get("rubric") or {}
+    for crit in rubric_dict.get("criteria", []):
+        crit.setdefault("slug", slugify(crit.get("name") or ""))
+
+    # Use the same state as callback_context for the guardrail (now with slugs)
     callback_ctx = MockCallbackContext(state_data=tool_ctx.state._data)
 
     # ParallelGraders agent that should receive dynamic sub_agents
@@ -373,7 +365,6 @@ def test_parallel_graders_dynamic_creation_from_rubric():
         assert expected_name in dynamic_names, f"Expected dynamic grader '{expected_name}' to be created"
 
     print("   ✅ PASS: ParallelGraders receives dynamic graders and keys from rubric")
-    return True
 
 
 def test_parallel_graders_respects_custom_rubrics():
@@ -382,13 +373,11 @@ def test_parallel_graders_respects_custom_rubrics():
     print("🧪 TEST 7c: ParallelGraders with Custom Rubrics (4 and 2 criteria)")
     print("="*60)
 
-    from agent import RubricGuardrailPlugin
-
     # We'll test two different rubrics: one with 4 criteria, another with 2
     for rubric in (CUSTOM_RUBRIC_4, CUSTOM_RUBRIC_2):
         print(f"\n   Testing rubric: {rubric['name']}")
 
-        plugin = RubricGuardrailPlugin()
+        plugin = RubricGuardrailPlugin(build_graders_fn=build_graders_from_rubric)
         tool_ctx = MockToolContext()
 
         # Validate rubric and persist to state (adds slugs per criterion)
@@ -464,7 +453,6 @@ def test_parallel_graders_respects_custom_rubrics():
             )
 
     print("   ✅ PASS: ParallelGraders respects custom rubrics (names and counts)")
-    return True
 
 
 def test_guardrail_blocks_invalid_rubric():
@@ -472,8 +460,6 @@ def test_guardrail_blocks_invalid_rubric():
     print("\n" + "="*60)
     print("🧪 TEST 8: Guardrail BLOCKS with Invalid Rubric")
     print("="*60)
-    
-    from agent import RubricGuardrailPlugin
     
     plugin = RubricGuardrailPlugin()
     
@@ -505,7 +491,6 @@ def test_guardrail_blocks_invalid_rubric():
     assert "Missing criteria" in block_msg
     
     print("   ✅ PASS: Guardrail correctly blocks invalid rubric")
-    return True
 
 
 def test_guardrail_blocks_missing_validation():
@@ -514,7 +499,6 @@ def test_guardrail_blocks_missing_validation():
     print("🧪 TEST 9: Guardrail BLOCKS with No Validation")
     print("="*60)
     
-    from agent import RubricGuardrailPlugin
     
     plugin = RubricGuardrailPlugin()
     
@@ -537,7 +521,6 @@ def test_guardrail_blocks_missing_validation():
     assert validation_result is None
     
     print("   ✅ PASS: Guardrail correctly blocks when no validation exists")
-    return True
 
 
 def test_guardrail_ignores_unprotected_agents():
@@ -546,7 +529,6 @@ def test_guardrail_ignores_unprotected_agents():
     print("🧪 TEST 10: Guardrail Ignores Unprotected Agents")
     print("="*60)
     
-    from agent import RubricGuardrailPlugin
     
     plugin = RubricGuardrailPlugin()
     
@@ -583,7 +565,6 @@ def test_guardrail_ignores_unprotected_agents():
         assert is_protected, f"{name} should be protected"
     
     print("   ✅ PASS: Guardrail correctly distinguishes protected/unprotected agents")
-    return True
 
 
 def test_fix_rubric_after_rejection():
@@ -591,8 +572,6 @@ def test_fix_rubric_after_rejection():
     print("\n" + "="*60)
     print("🧪 TEST 11: Fix Rubric After Rejection (Simulated Flow)")
     print("="*60)
-    
-    from agent import RubricGuardrailPlugin
     
     plugin = RubricGuardrailPlugin()
     ctx = MockToolContext()
@@ -622,7 +601,6 @@ def test_fix_rubric_after_rejection():
     assert is_valid2 == True
     
     print("   ✅ PASS: Guardrail correctly switches from block to allow after fix")
-    return True
 
 
 # =============================================================================
