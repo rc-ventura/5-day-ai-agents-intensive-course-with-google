@@ -7,7 +7,7 @@ from google.adk.agents import LlmAgent, ParallelAgent
 
 from ..services.gemini_client import get_model, get_agent_generate_config
 from ..config import MODEL_LITE, retry_config
-from ..schemas import CriterionGrade
+from ..models.schemas import CriterionGrade
 from ..utils.text_utils import slugify
 
 

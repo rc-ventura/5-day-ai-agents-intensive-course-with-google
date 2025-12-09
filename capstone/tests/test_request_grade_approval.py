@@ -7,13 +7,8 @@ These tests verify:
 """
 
 import asyncio
-import os
-import sys
 
-# Add parent directory to path for imports (same pattern as other tests)
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from agent import finalize_grade, needs_approval
+from capstone.agent import finalize_grade, needs_approval
 
 
 class MockToolContext:
