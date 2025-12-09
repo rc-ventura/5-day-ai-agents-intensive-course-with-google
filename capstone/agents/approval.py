@@ -1,10 +1,10 @@
 """Approval Agent - handles human-in-the-loop for edge case grades."""
 
 from google.adk.agents import LlmAgent
-from google.adk.models.google_llm import Gemini
 from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 
+from ..services.gemini_client import get_model, get_agent_generate_config
 from ..config import MODEL_LITE, retry_config
 
 
@@ -51,7 +51,8 @@ async def needs_approval(
 
 approval_agent = LlmAgent(
     name="ApprovalAgent",
-    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
+    model=get_model(),
+    generate_content_config=get_agent_generate_config(),
     description="Handles human approval for edge case grades",
     instruction="""You finalize grades. 
     

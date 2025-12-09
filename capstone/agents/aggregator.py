@@ -1,8 +1,8 @@
 """Aggregator Agent - combines criterion grades into final score."""
 
 from google.adk.agents import LlmAgent
-from google.adk.models.google_llm import Gemini
 
+from ..services.gemini_client import get_model, get_agent_generate_config
 from ..config import MODEL_LITE, retry_config
 from ..schemas import AggregationResult
 from ..tools.calculate_score import calculate_final_score
@@ -10,7 +10,8 @@ from ..tools.calculate_score import calculate_final_score
 
 aggregator_agent = LlmAgent(
     name="AggregatorAgent",
-    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
+    model=get_model(),
+    generate_content_config=get_agent_generate_config(),
     description="Aggregates individual criterion grades into a final score",
     instruction="""You are a grade aggregator. Your job is to calculate the final score.
 

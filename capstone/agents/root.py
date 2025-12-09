@@ -1,11 +1,10 @@
 """Root Agent - orchestrates the entire grading workflow."""
 
 from google.adk.agents import LlmAgent, SequentialAgent
-from google.adk.models.google_llm import Gemini
 from google.adk.tools import FunctionTool
 from google.adk.tools.agent_tool import AgentTool
 
-
+from ..services.gemini_client import get_model, get_agent_generate_config
 from .rubric_validator import rubric_validator_agent
 from ..config import MODEL_LITE, MODEL, retry_config
 from ..tools.save_submission import save_submission
@@ -36,7 +35,8 @@ print("✅ GradingPipeline created (SequentialAgent with structured outputs)")
 # - GradingPipeline is a sub-agent (transfer_to_agent for real execution)
 root_agent = LlmAgent(
     name="SmartGradingAssistant",
-    model=Gemini(model=MODEL, retry_options=retry_config),
+    model=get_model(),
+    generate_content_config=get_agent_generate_config(),
     description="Main coordinator for the Smart Grading Assistant",
     instruction="""You are the Smart Grading Assistant. You control rubric validation and submission storage directly, then delegate grading to a specialized pipeline.
 

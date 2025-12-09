@@ -4,8 +4,8 @@ import logging
 from typing import List, Tuple
 
 from google.adk.agents import LlmAgent, ParallelAgent
-from google.adk.models.google_llm import Gemini
 
+from ..services.gemini_client import get_model, get_agent_generate_config
 from ..config import MODEL_LITE, retry_config
 from ..schemas import CriterionGrade
 from ..utils.text_utils import slugify
@@ -20,7 +20,8 @@ def create_criterion_grader(criterion_name: str, criterion_description: str, max
     criterion_slug = slugify(criterion_name)
     return LlmAgent(
         name=f"Grader_{criterion_slug}",
-        model=Gemini(model=MODEL_LITE, retry_options=retry_config),
+        model=get_model(),
+        generate_content_config=get_agent_generate_config(),
         description=f"Evaluates submissions for: {criterion_name}",
         instruction=f"""You are an expert evaluator for the criterion: "{criterion_name}"
         

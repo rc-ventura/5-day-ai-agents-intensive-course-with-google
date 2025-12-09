@@ -1,15 +1,16 @@
 """Feedback Generator Agent - creates constructive feedback for students."""
 
 from google.adk.agents import LlmAgent
-from google.adk.models.google_llm import Gemini
 
+from ..services.gemini_client import get_model, get_agent_generate_config
 from ..config import MODEL_LITE, retry_config
 from ..schemas import FinalFeedback
 
 
 feedback_agent = LlmAgent(
     name="FeedbackGeneratorAgent",
-    model=Gemini(model=MODEL_LITE, retry_options=retry_config),
+    model=get_model(),
+    generate_content_config=get_agent_generate_config(),
     description="Generates comprehensive feedback for the student",
     instruction="""You are a feedback specialist. Your job is to create 
 constructive, encouraging feedback for the student.
