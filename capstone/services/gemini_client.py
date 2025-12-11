@@ -3,7 +3,8 @@ from typing import Optional
 from google.adk.models.google_llm import Gemini
 import google.generativeai as genai
 from google.genai import types
-
+# UI/helper generation config must come from google-generativeai
+from google.generativeai.types import GenerationConfig
 from ..config import MODEL, MODEL_LITE, retry_config
 
 DEFAULT_SAFETY_SETTINGS = [
@@ -45,25 +46,23 @@ def get_agent_generate_config(
     )
 
 
-
 def get_ui_model(
     *,
+    model_name: str | None = None,
     temperature: float = 0.7,
     max_output_tokens: int = 1024,
     top_p: float = None,
     top_k: Optional[int] = None,
 ) -> genai.GenerativeModel:
-    """Return a GenerativeModel instance for UI interactions.
+    """Return a GenerativeModel instance for UI or non-ADK use.
 
-    The API key must be configured separately via ``configure_ui_client``.
-    Tune temperature / tokens centrally here.
+    Call configure_ui_client(api_key) once before using this helper.
     """
-    generation_config = types.GenerationConfig(
+    generation_config = GenerationConfig(
         temperature=temperature,
-        maxOutputTokens=max_output_tokens,
-        topP=top_p,
-        topK=top_k,
+        max_output_tokens=max_output_tokens,
+        top_p=top_p,
+        top_k=top_k,
     )
 
-    # For now, reuse MODEL_LITE here as well. Adjust in one place if needed.
-    return genai.GenerativeModel(MODEL, generation_config=generation_config)
+    return genai.GenerativeModel(model_name or MODEL, generation_config=generation_config)

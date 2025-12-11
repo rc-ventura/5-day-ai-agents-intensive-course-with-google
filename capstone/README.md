@@ -112,15 +112,6 @@ Traditional automation struggles with the nuanced nature of academic evaluation.
 
 ---
 
-## 🧱 Design decisions: structured outputs
-
-- **Antes:** cada CriterionGrader chamava a tool `grade_criterion()` que escrevia dicts em `state`, e o `AggregatorAgent` usava `build_grades_payload` → `calculate_final_score(grades_json)`.
-- **Problema:** às vezes o LLM não chamava a tool e devolvia texto livre, o que quebrava o aggregator e o pipeline sequencial.
-- **Agora:** cada grader usa `output_schema=CriterionGrade` e grava `grade_<slug>` diretamente no `state`. O `AggregatorAgent` chama apenas `calculate_final_score(tool_context)`, que:
-  - lê `grader_output_keys` + `grade_*` do `state`;
-  - agrega total, percentual e nota;
-  - retorna um `AggregationResult` validado por Pydantic.
-- **Resultado:** fluxo mais robusto (sem strings soltas), menos tools desnecessárias e contratos de dados claros entre agentes.
 
 ## 📚 Course Concepts Applied
 
@@ -359,22 +350,69 @@ capstone/
 
 ---
 
+## 🖥️ Streamlit UI (NEW!)
+
+The Smart Grading Assistant now ships with a Streamlit interface so teachers can upload rubrics, grade submissions, and review feedback without touching the command line.
+
+### Quick Start
+
+```bash
+cd capstone
+streamlit run ui/app.py
+```
+
+### UI Features
+
+- 📋 Rubric upload (file or paste JSON)
+- 📝 Submission upload for `.py`, `.txt`, `.md`
+- 🚀 One-click grading button
+- 📊 Real-time progress indicators (validating → grading → aggregating → feedback)
+- 💬 Detailed results + structured feedback
+- 📥 Export options (download JSON, copy feedback)
+
+### UI Structure
+
+```
+ui/
+├── app.py              # Streamlit entrypoint
+├── components/
+│   ├── sidebar.py      # Rubric & submission setup
+│   ├── chat.py         # Progress + chat-style updates
+│   └── results.py      # Final scores & feedback
+├── services/
+│   └── grading.py      # Bridge to ADK grading pipeline
+└── utils/
+    └── formatters.py   # Formatting helpers
+```
+
+See `specs/1-streamlit-grading-ui/quickstart.md` for detailed usage instructions.
+
+---
+
 ## 🗺️ Roadmap
 
 - **Phase 1 – Core Grading (MVP)**
 
   - [X] Implement a multi-agent pipeline to evaluate submissions using rubrics.
   - [X] Validate rubric structure and compute final grades with detailed feedback.
-- **Phase 2 – Rubric Assistant with RAG (next step)**
+  - [X] Deliver Streamlit teacher UI (upload → grade → feedback).
+- **Phase 2 – Enhanced UX**
 
-  - [ ] Build a RAG-powered *Rubric Assistant* to help teachers create and review rubrics:
-    - Index existing rubrics and successful evaluation examples in a knowledge base.
-    - Use RAG to retrieve relevant rubric excerpts, pedagogical guidance, and sample criteria.
-    - Allow teachers to ask questions such as “how can I improve this criterion?” or “example rubric for a Python project?”.
-- **Phase 3 – UX & Deployment**
+  - [ ] Rubric preview & inline editing
+  - [ ] Syntax highlighting + line numbers for submissions
+  - [ ] Session history & resume
+  - [ ] Human-in-the-loop approval modal
+- **Phase 3 – Rubric Assistant with RAG**
 
-  - [ ] Add a Streamlit frontend for uploading rubrics/submissions and reviewing grades + feedback.
-  - [ ] Prepare the project for deployment on Cloud Run / Agent Engine.
+  - [ ] Build a RAG-powered *Rubric Assistant* to help teachers create and review rubrics
+  - [ ] Index rubrics/examples in a knowledge base
+  - [ ] Provide rubric improvement suggestions via chat
+- **Phase 4 – Production Deployment**
+
+  - [ ] Authentication (Google OAuth)
+  - [ ] PostgreSQL session storage
+  - [ ] Cloud Run deployment + monitoring
+  - [ ] Analytics dashboard for grading metrics
 
 ## 🔮 Future Improvements
 
