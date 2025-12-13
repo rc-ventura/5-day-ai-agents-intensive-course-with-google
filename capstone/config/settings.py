@@ -20,6 +20,15 @@ os.makedirs(DATA_DIR, exist_ok=True)
 MODEL_LITE = os.getenv("MODEL_LITE", "gemini-2.5-flash-lite")
 MODEL = os.getenv("MODEL", "gemini-2.5-flash")
 
+# LLM provider (Gemini/OpenAI via LiteLLM)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")  # LiteLLM proxy or Azure endpoint
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# Defaults
+DEFAULT_MODEL = OPENAI_MODEL
+
 # App configuration
 APP_NAME = "capstone"
 USER_ID = "teacher_01"
@@ -47,3 +56,4 @@ print(f"   LOG_PATH: {LOG_PATH}")
 print(f"   DATA_DIR: {DATA_DIR}")
 print(f"   MODEL: {MODEL}")
 print(f"   MODEL_LITE: {MODEL_LITE}")
+print(f"   LLM_PROVIDER: {LLM_PROVIDER}")

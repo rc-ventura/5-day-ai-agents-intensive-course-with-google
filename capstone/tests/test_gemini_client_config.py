@@ -1,4 +1,5 @@
 import types as py_types
+import os
 
 import pytest
 
@@ -22,6 +23,9 @@ def dummy_retry_config():
 
 def test_get_model_uses_global_model_and_retry(monkeypatch, dummy_retry_config):
     """get_model must build Gemini with MODEL and retry_config globals."""
+
+    # Ensure local env doesn't switch provider to OpenAI during this test.
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
 
     captured = {}
 
@@ -111,6 +115,9 @@ def test_get_ui_model_passes_generation_config(monkeypatch):
 
 def test_create_criterion_grader_uses_shared_model_and_config():
     """Grader created must use get_model + get_agent_generate_config."""
+
+    # Ensure local env doesn't switch provider to OpenAI during this test.
+    os.environ["LLM_PROVIDER"] = "gemini"
 
     grader = create_criterion_grader(
         "Code Quality",

@@ -14,3 +14,5 @@ sqlalchemy>=2.0.0
 streamlit>=1.28.0
 
 streamlit-js-eval>=0.1.7
+
+litellm>=1.40.0

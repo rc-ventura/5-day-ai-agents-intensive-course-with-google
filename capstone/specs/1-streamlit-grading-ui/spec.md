@@ -47,8 +47,8 @@ Streamlit-based teacher-facing UI for the Smart Grading Assistant. Connects to a
 
 **Acceptance Criteria:**
 
-- [ ] Teacher can upload rubric via file upload OR text paste
-- [ ] Teacher can upload submission via file upload OR text paste
+- [X] Teacher can upload rubric via file upload OR text paste
+- [X] Teacher can upload submission via file upload OR text paste
 - [ ] UI displays validation status for rubric (valid/invalid with errors)
 - [ ] UI displays submission status (loaded with preview)
 - [ ] "Start Grading" button is enabled only when rubric is valid AND submission is loaded

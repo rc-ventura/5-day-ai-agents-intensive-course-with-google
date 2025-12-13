@@ -1,11 +1,18 @@
 from typing import Optional
+import os
 
+from google.adk.models.lite_llm import LiteLlm
 from google.adk.models.google_llm import Gemini
 import google.generativeai as genai
 from google.genai import types
-# UI/helper generation config must come from google-generativeai
-from google.generativeai.types import GenerationConfig
-from ..config import MODEL, MODEL_LITE, retry_config
+from google.genai.types import GenerationConfig
+from ..config import (
+    MODEL,
+    MODEL_LITE,
+    retry_config,
+    OPENAI_BASE_URL,
+    OPENAI_MODEL,
+)
 
 DEFAULT_SAFETY_SETTINGS = [
     types.SafetySetting(
@@ -15,13 +22,30 @@ DEFAULT_SAFETY_SETTINGS = [
 ]
 
 
-def get_model() -> Gemini:
+def get_model():
     """Return a configured Gemini model for all ADK agents.
 
     For now, this always uses the lightweight model defined by MODEL_LITE.
     If you later decide to use different models per agent, centralize that
     logic here without changing call sites.
     """
+    provider = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower()
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY must be set when LLM_PROVIDER=openai")
+
+        if not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = api_key
+
+        base_url = (os.getenv("OPENAI_BASE_URL") or OPENAI_BASE_URL or "").strip()
+        if base_url and not os.getenv("OPENAI_BASE_URL"):
+            os.environ["OPENAI_BASE_URL"] = base_url
+
+        model_name = (os.getenv("OPENAI_MODEL") or "").strip() or OPENAI_MODEL
+
+        return LiteLlm(model=model_name, drop_params=True)
+
     return Gemini(model=MODEL, retry_options=retry_config)
 
 
